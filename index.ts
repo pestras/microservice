@@ -128,7 +128,7 @@ export interface RouteConfig {
   path?: string;
   method?: HttpMehod;
   requestType?: string;
-  body?: ISchema;
+  body?: ISchema | ((body: any) => any);
   bodyQuota?: number;
   query?: ISchema;
   queryLength?: number;
@@ -138,8 +138,8 @@ export interface RouteConfig {
 
 interface RouteFullConfig extends RouteConfig {
   key?: string;
-  bodyValidator?: Validall;
-  queryValidator?: Validall
+  bodyValidator?: Validall | ((body: any) => any);
+  queryValidator?: Validall | ((body: any) => any)
 };
 
 /**
@@ -176,7 +176,7 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  body?: ISchema;
+  body?: ISchema | ((data: any) => any);
   bodyQuota?: number;
   payload?: Payload;
   options?: SubscriptionOptions;
@@ -184,7 +184,7 @@ export interface SubjectConfig {
 }
 
 interface SubjectFullConfig extends SubjectConfig {
-  bodyValidator?: Validall;
+  bodyValidator?: Validall | ((data: any) => any);
 }
 
 /**
@@ -199,10 +199,15 @@ let serviceSubjects: { [key: string]: SubjectFullConfig } = {};
  */
 export function SUBJECT(config: SubjectConfig) {
   return (target: any, key: string) => {
+    let validator: Validall | ((data: any) => any);
+    if (config.body) {
+      if (typeof config.body === "function") validator = config.body;
+      else validator = new Validall({ id: key, schema: config.body, ...validatorDefualts })
+    } else validator = null;
     serviceSubjects[key] = <SubjectFullConfig>{
       subject: config.subject,
       options: config.options || null,
-      bodyValidator: config.body ? new Validall({ id: key, schema: config.body, ...validatorDefualts }) : null,
+      bodyValidator: validator,
       bodyQuota: config.bodyQuota || 1024 * 100,
       payload: config.payload || Payload.JSON,
       auth: !!config.auth
@@ -544,20 +549,62 @@ function createServer() {
         let queryStr = request.url.href.split('?')[1];
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength) return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
         if (route.queryValidator) {
-          let success = route.queryValidator.validate(request.url.query);
-          if (!success) {
-            logger.warn(route.queryValidator.error.message, { route: route.name });
-            return response.status(CODES.BAD_REQUEST).json(route.queryValidator.error.message);
+          if (typeof route.queryValidator === "function") {
+            let ret = route.queryValidator(request.url.query);
+            if (ret) {
+              if (typeof ret.then === "function") {
+                try {
+                  let err = await ret;
+                  if (err) {
+                    logger.warn(err, { route: route.name });
+                    return response.status(CODES.BAD_REQUEST).json(err);
+                  }
+                } catch (err) {
+                  logger.error(err, { route: route.name });
+                  return response.status(CODES.UNKNOWN_ERROR).json(err);
+                }
+              } else {
+                logger.warn(ret, { route: route.name });
+                return response.status(CODES.BAD_REQUEST).json(ret);
+              }
+            }
+          } else {
+            let success = route.queryValidator.validate(request.url.query);
+            if (!success) {
+              logger.warn(route.queryValidator.error.message, { route: route.name });
+              return response.status(CODES.BAD_REQUEST).json(route.queryValidator.error.message);
+            }
           }
         }
 
         if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length']) return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
         if (route.bodyValidator) {
-          let success = route.bodyValidator.validate(request.body);
-          if (!success) {
-            logger.warn(route.bodyValidator.error.message, { route: route.name });
-            return response.status(CODES.BAD_REQUEST).json(route.bodyValidator.error.message);
+          if (typeof route.bodyValidator === "function") {
+            let ret = route.bodyValidator(request.body);
+            if (ret) {
+              if (typeof ret.then === "function") {
+                try {
+                  let err = await ret;
+                  if (err) {
+                    logger.warn(err, { route: route.name });
+                    return response.status(CODES.BAD_REQUEST).json(err);
+                  }
+                } catch (err) {
+                  logger.error(err, { route: route.name });
+                  return response.status(CODES.UNKNOWN_ERROR).json(err);
+                }
+              } else {
+                logger.warn(ret, { route: route.name });
+                return response.status(CODES.BAD_REQUEST).json(ret);
+              }
+            }
+          } else {
+            let success = route.bodyValidator.validate(request.body);
+            if (!success) {
+              logger.warn(route.bodyValidator.error.message, { route: route.name });
+              return response.status(CODES.BAD_REQUEST).json(route.bodyValidator.error.message);
+            }
           }
         }
 
@@ -611,8 +658,26 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
           return logger.warn('msg body quota exceeded');
 
         if (subjectConf.bodyValidator) {
-          let success = subjectConf.bodyValidator.validate(msg.data);
-          if (!success) return logger.warn(subjectConf.bodyValidator.error.message);
+          if (typeof subjectConf.bodyValidator === "function") {
+            let ret = subjectConf.bodyValidator(msg.data);
+            if (ret) {
+              if (typeof ret.then === "function") {
+                try {
+                  let err = await ret;
+                  if (err) {
+                    return logger.warn(err, { subject: subjectConf.subject });
+                  }
+                } catch (err) {
+                  return logger.error(err, { subject: subjectConf.subject });
+                }
+              } else {
+                return logger.warn(ret, { subject: subjectConf.subject });
+              }
+            }
+          } else {
+            let success = subjectConf.bodyValidator.validate(msg.data);
+            if (!success) return logger.warn(subjectConf.bodyValidator.error.message, { subject: subjectConf.subject });
+          }
         }
 
         try {
@@ -846,14 +911,25 @@ export class Micro {
       });
 
     for (let config of serviceRoutesRepo) {
+      let BodyValidator: Validall | ((body: any) => any);
+      let queryValidator: Validall | ((query: any) => any);
+      if (config.body) {
+        if (typeof config.body === "function") BodyValidator = config.body;
+        else BodyValidator = new Validall({ id: `${config.key}Body`, schema: config.body, ...validatorDefualts });
+      } else BodyValidator = null;
+      if (config.query) {
+        if (typeof config.query === "function") queryValidator = config.query;
+        else queryValidator = new Validall({ id: `${config.key}Query`, schema: config.query, ...validatorDefualts });
+      } else queryValidator = null;
+
       let route: RouteFullConfig = {
         path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + (config.path || '')),
         name: config.name || config.key,
         method: config.method || 'GET',
         requestType: config.requestType || 'application/json',
-        bodyValidator: config.body ? new Validall({ id: config.key, schema: config.body, ...validatorDefualts }) : null,
+        bodyValidator: BodyValidator,
         bodyQuota: config.bodyQuota || 1024 * 100,
-        queryValidator: config.query ? new Validall({ id: config.key, schema: config.query, ...validatorDefualts }) : null,
+        queryValidator: queryValidator,
         queryLength: config.queryLength || 100,
         auth: !!config.auth,
         timeout: (!config.timeout || config.timeout < 0) ? 1000 * 15 : config.timeout,
