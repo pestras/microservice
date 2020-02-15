@@ -114,10 +114,10 @@ publish | (msg: SocketIOPublishMessage) => void | A helper method to organize co
 
 Used to define a route for a rest service.
 
-**ROUTE** accepts an optional config objects to configure our route.
+**ROUTE** accepts an optional config object to configure our route.
 
 Name | type | Default | Description
---- | --- | --- | --- | --- 
+--- | --- | --- | --- 
 name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern very similar to express route path
 method | HttpMethod | 'GET' | 
@@ -127,7 +127,7 @@ bodyQuota | number | 1024 * 100 | Request body size limit
 query | ISchema | null | Validall Schema see [validall docs](https://www.npmjs.com/package/validall)
 queryLength | number | 100 | Request query characters length limit
 auth | boolean | false | Sets the current route as secure and needs authorization
-timeout | number | 15000 | Max time for to handle the request before canceling
+timeout | number | 15000 | Max time to handle the request before canceling
 
 ```ts
 import { SERVICE, ROUTE } from '@pestras/microservice';
@@ -172,7 +172,7 @@ class Article {
 
 ### Request
 
-*PMS** http request extends Node IncomingMessage class with few additional properties*
+*PMS** http request holds the original Node IncomingMessage with a few extra properties*
 
 Name | Type | Description
 --- | --- | ---
@@ -182,15 +182,18 @@ body | any |
 user | any | When auth option is set to true.
 auth | string | Auth token from Authorization header.
 get | (key: string) => string | method to get specific request header value
+http | NodeJS.IncomingMessage | Node incoming message
 
 ### Response
 
-*PMS** http response extends Node Response class with a couple of methods.
+*PMS** http response holds the original Node Server Response with a couple of methods.
 
 Name | Type | Description
 --- | --- | ---
 json | (data?: any) => void | Used to send json data.
 status | (code: number) => Response | Used to set response status code.
+end | any | Overwrites orignal end method *recommended to use*
+http | NodeJS.IncomingMessage | Node server response
 
 **Response** will log any 500 family errors automatically.
 
@@ -199,7 +202,7 @@ status | (code: number) => Response | Used to set response status code.
 Used to subscribe to nats server pulished subjects, and also accepts a config object.
 
 Name | Type | Required | Default | Description
---- | --- | ---
+--- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
 body | ISchema | false | null | Validall Schema see [validall docs](https://www.npmjs.com/package/validall)
 bodyQuota | number | false | 1024 * 100 | Subject msg data size limit
@@ -218,8 +221,8 @@ import { SERVICE, SUBJECT } from '@pestras/microservice';
 class Email {
 
   @SUBJECT({
-    name: 'user.insert',
-    auht: true, // if authorization passed msg.data.user will hold user data
+    subject: 'user.insert',
+    auth: true, // if authorization passed msg.data.user will hold user data
     body: {
       $props: {
         user: { $type: 'object' } // since we know user data will be provided after authorization
@@ -373,7 +376,7 @@ class Publisher {
 
 # Cluster
 
-**PMS** makes use of node built in cluster api and made it easy for us to manage workers communications.
+**PMS** uses node built in cluster api, and made it easy for us to manage workers communications.
 
 First of all to enable custering we should set workers number in our service configurations to some value other than zero.
 
@@ -403,7 +406,7 @@ Name | Type | Required | Default | Description
 --- | --- | ---- | --- | ---
 message | string | true | - | Message name
 data | any | false | null | Message payload
-target | 'all' | 'others' | false | 'others' | If we need the same worker to receive the message as well.
+target | 'all' \| 'others' | false | 'others' | If we need the same worker to receive the message as well.
 
 ```ts
 import { SERVICE, Micro } from '@pestras/microservice';
@@ -475,8 +478,8 @@ worker to start listening and then will restart the next one.
 
 ### onInit
 
-When defined, will be called one our service is instantiated but nothing else, this method is useful when
-we need to connect to a databese or do some async operations before start listening one events or http requests.
+When defined, will be called once our service is instantiated but nothing else, this method is useful when
+we need to connect to a databese or to make some async operations before start listening one events or http requests.
 
 It can return a promise or nothing.
 
@@ -495,7 +498,7 @@ class Publisher {
 
 ## onReady
 
-This Method is called once all our listeners are ready.
+This method is called once all our listeners are ready.
 
 ```ts
 import { SERVICE } from '@pestras/microservice';
@@ -503,7 +506,7 @@ import { SERVICE } from '@pestras/microservice';
 @SERVICE({ workers: 4 })
 class Publisher {
 
-  async onReay() {}
+  onReay() {}
 }
 ```
 
@@ -515,7 +518,7 @@ Called once our service is stopped for any reason, and the exit signal is passed
 @SERVICE({ workers: 4 })
 class Publisher {
 
-  async onDestory(signal: NodeJS.Signals) {
+  onDestory(signal: NodeJS.Signals) {
     // disconnecting from the databese
   }
 }
@@ -547,7 +550,7 @@ Called whenever an error accured when handling an http request, passing the Requ
 @SERVICE({ workers: 4 })
 class Publisher {
 
-  async onError(req: Request, res: Response, err: any) { }
+  onError(req: Request, res: Response, err: any) { }
 }
 ```
 
@@ -559,7 +562,7 @@ I think it is clear by only reading the name.
 @SERVICE({ workers: 4 })
 class Publisher {
 
-  async onUnhandledRejection(reason: any, p: Promise<any>) { }
+  onUnhandledRejection(reason: any, p: Promise<any>) { }
 }
 ```
 
@@ -571,7 +574,7 @@ Also clear.
 @SERVICE({ workers: 4 })
 class Publisher {
 
-  async onUnhandledException(err: any) { }
+  onUnhandledException(err: any) { }
 }
 ```
 

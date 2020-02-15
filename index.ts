@@ -772,8 +772,8 @@ process
   .on('uncaughtException', err => {
     logger.error(err);
     if (service && typeof service.onUnhandledException === "function") service.onUnhandledException(err);
-    // serviceConfig.exitOnUnhandledException && process.exit(1);
-    process.exit(1);
+    if (serviceConfig) serviceConfig.exitOnUnhandledException && process.exit(1);
+    else process.exit(1);
   });
 
 export interface SocketIOPublishMessage {
@@ -847,7 +847,7 @@ export class Micro {
 
     for (let config of serviceRoutesRepo) {
       let route: RouteFullConfig = {
-        path: URL.Clean(serviceConfig.name + '/' + serviceConfig.version + (config.path || '')),
+        path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + (config.path || '')),
         name: config.name || config.key,
         method: config.method || 'GET',
         requestType: config.requestType || 'application/json',
