@@ -99,11 +99,11 @@ name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern very similar to express route path
 method | HttpMethod | 'GET' | 
 requestType | string | 'application/json | Same as 'Content-Type' header
-body | (routName: string, body: any) => any \| Promise<any> | null | validation method
+body | (routeName: string, body: any) => any \| Promise\<any\> | null | validation method
 bodyQuota | number | 1024 * 100 | Request body size limit
-query | (routName: string, query: any) => any \| Promise<any> | null | validation method
+query | (routeName: string, query: any) => any \| Promise\<any\> | null | validation method
 queryLength | number | 100 | Request query characters length limit
-auth | (routName: string, request: Request) => any \| Promise<any> | null | auth method
+auth | (routeName: string, request: Request) => any \| Promise\<any\> | null | auth method
 timeout | number | 15000 | Max time to handle the request before canceling
 
 ```ts
@@ -178,11 +178,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-data | (data: any) => any \| Promise<any> | null | validation method
+data | (data: any) => any \| Promise\<any\> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | NatsPayload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | (routName: string, request: Request) => any \| Promise<any> | false | null | auth method
+auth | (routName: string, request: Request) => any \| Promise\<any\> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
