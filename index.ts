@@ -558,8 +558,10 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
         logger.debug('msg:');
         logger.debug(msg);
 
-        if (subjectConf.dataQuota && subjectConf.dataQuota < msg.size)
+        if (subjectConf.dataQuota && subjectConf.dataQuota < msg.size) {
+          if (msg.reply) Micro.nats.publish(msg.reply, 'msg body quota exceeded');
           return logger.warn('msg body quota exceeded');
+        }
 
         if (typeof subjectConf.data === "function") {
           let ret = subjectConf.data(subjectConf.subject, msg.data);
@@ -568,12 +570,15 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
               try {
                 let err = await ret;
                 if (err) {
+                  if (msg.reply) Micro.nats.publish(msg.reply, err);
                   return logger.warn(err, { subject: subjectConf.subject });
                 }
               } catch (err) {
+                if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
                 return logger.error(err, { subject: subjectConf.subject });
               }
             } else {
+              if (msg.reply) Micro.nats.publish(msg.reply, ret);
               return logger.warn(ret, { subject: subjectConf.subject });
             }
           }
@@ -592,6 +597,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
                 let err = await ret;
                 if (!!err) {
                   clearTimeout(authTimer);
+                  if (msg.reply) Micro.nats.publish(msg.reply, err);
                   return logger.warn(err);
                 }
               } catch (err) {
@@ -601,6 +607,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
               }
             } else {
               clearTimeout(authTimer);
+              if (msg.reply) Micro.nats.publish(msg.reply, ret);
               return logger.warn(ret);
             }
           }

@@ -156,7 +156,7 @@ params | { [key: string]: string } | includes route path params values.
 body | any |
 auth | any | useful to save some auth value.
 get | (key: string) => string | method to get specific request header value
-http | NodeJS.IncomingMessage | Node incoming message
+http | NodeJS.IncomingMessage | 
 
 ### Response
 
@@ -167,7 +167,7 @@ Name | Type | Description
 json | (data?: any) => void | Used to send json data.
 status | (code: number) => Response | Used to set response status code.
 end | any | Overwrites orignal end method *recommended to use*
-http | NodeJS.IncomingMessage | Node server response
+http | NodeJS.ServerResponse | 
 
 **Response** will log any 500 family errors automatically.
 
@@ -207,6 +207,8 @@ class Email {
 ```
 
 *Note: Both validation and auth methods should return or resolve to null when passed, returned or resolved values are consedered as validation or auth failure*
+
+*Note: Incase of validation or auth failer, **PMS** will automatically reply if msg has reply subject*
 
 # SocketIO
 
@@ -277,7 +279,7 @@ class Publisher {
   }
 }
 ```
-*Note: auth method should return or resolve to null when passed, returned or resolved value is consedered as failure*
+*Note: Auth method should return or resolve to null when passed, returned or resolved value is consedered as failure*
 
 ## USE DECORATOE
 
