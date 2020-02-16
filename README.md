@@ -200,7 +200,7 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-data | (data: any) => any | null | validation method
+data | (data: any) => any \| Promise<any> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | NatsPayload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
