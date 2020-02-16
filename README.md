@@ -21,12 +21,11 @@ Name        | Type     | Defualt         | Description
 version     | number   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
 port        | number   | 3888            | Http server listening port.   
 workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
-logLevel    | LOGLEVEL | LOGLEVEL.INFO   | 
-validatorDefaults | ValidatorDefaults | { strict: false, filter: false, required: false, nullable: false } | These are **Validall** defualt options when validating requests body as we're going to see later, for more info on **Validall** [see docs](https://www.npmjs.com/package/validall)
+logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
 nats        | string \| number \| NatsConnectionOptions | null        | see [Nats Docs](https://docs.nats.io/)
 exitOnUnhandledException | boolean | true |
 socket | SocketIOOptions | null |
-auth | AuthOptions | null |
+authTimeout | number | 15000 | auth method timeout
 
 #### LOGLEVEL Enum
 
@@ -122,11 +121,11 @@ name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern very similar to express route path
 method | HttpMethod | 'GET' | 
 requestType | string | 'application/json | Same as 'Content-Type' header
-body | ISchema | null | Validall Schema see [validall docs](https://www.npmjs.com/package/validall)
+body | (routName: string, body: any) => any \| Promise<any> | null | validation method
 bodyQuota | number | 1024 * 100 | Request body size limit
-query | ISchema | null | Validall Schema see [validall docs](https://www.npmjs.com/package/validall)
+query | (routName: string, query: any) => any \| Promise<any> | null | validation method
 queryLength | number | 100 | Request query characters length limit
-auth | boolean | false | Sets the current route as secure and needs authorization
+auth | (routName: string, request: Request) => any \| Promise<any> | null | auth method
 timeout | number | 15000 | Max time to handle the request before canceling
 
 ```ts
@@ -151,16 +150,12 @@ class Article {
 
   @ROUTE({
     method: 'POST',
-    auth: true, // if authorization passed request.user will hold user data
-    body: {
-      $filter: true,
-      $props:
-        name: { $type: 'string' },
-        body: { $type: 'string' }
+    auth: async (routName: string, request: Request) => {
+      //  some authorization
     }
   })
   insertArticle(req: Request, res: Response) {
-    let user = req.user;
+    let auth = req.auth;
     let article = req.body;
 
     // insert article
@@ -169,6 +164,8 @@ class Article {
   }
 }
 ```
+
+*Note: All validation and auth methods should return or resolve to null when passed, returned or resolved values are consedered as validation or auth failure*
 
 ### Request
 
@@ -179,8 +176,7 @@ Name | Type | Description
 url | URL | URL extends Node URL class with some few properties, most used one is *query*.
 params | { [key: string]: string } | includes route path params values.
 body | any |
-user | any | When auth option is set to true.
-auth | string | Auth token from Authorization header.
+auth | any | useful to save some auth value.
 get | (key: string) => string | method to get specific request header value
 http | NodeJS.IncomingMessage | Node incoming message
 
@@ -204,11 +200,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-body | ISchema | false | null | Validall Schema see [validall docs](https://www.npmjs.com/package/validall)
-bodyQuota | number | false | 1024 * 100 | Subject msg data size limit
+data | (data: any) => any | null | validation method
+dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | NatsPayload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | boolean | false | false | Sets the current Subject as secure and needs authorization
+auth | (routName: string, request: Request) => any \| Promise<any> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
@@ -222,19 +218,17 @@ class Email {
 
   @SUBJECT({
     subject: 'user.insert',
-    auth: true, // if authorization passed msg.data.user will hold user data
-    body: {
-      $props: {
-        user: { $type: 'object' } // since we know user data will be provided after authorization
-      }
+    auth: async (subject: string, msg: Msg) => {
+      //  some authorization
     },
     options: { queue: 'emailServiceWorker' }
   })
   sendActivationEmail(nats: NatsClient, msg: Msg) {
-    let id = msg.data;
-    let user = msg.data.user
+    let auth = msg.data.auth;
   }
 ```
+
+*Note: Both validation and auth methods should return or resolve to null when passed, returned or resolved values are consedered as validation or auth failure*
 
 # SocketIO
 
@@ -283,8 +277,7 @@ Called when a socket establish a coonection for the first time, mostly used for 
 
 It accepts an optional array of namespaces names and defaults to ['defualt'].
 
-And for the second parameter a boolean value to determine weather authorization is enabled or not,
-if set to true **PMS** will get the value of *socket.handshake.query.auth* as a token and authorizes it.
+The second parameter is for auth helper.
 
 ```ts
 import { SERVICE, HANDSHAKE } from '@pestras/microservice';
@@ -295,16 +288,22 @@ class Publisher {
   @HANDSHAKE()
   handshake(io: SocketIO.Servier, socket: SocketIO.Socket, next: (err?: any) => void) {}
 
-  @HANDSHAKE(['blog'], true) // if authorization passed socket.user will hold user data
+  @HANDSHAKE(
+    ['blog'],
+    async (ns: SocketIO.Namespace, socket: SocketIO.Socket) => {
+      //  some authorization
+    }
+  )
   blogHandshake(ns: SocketIO.Namespace, socket: SocketIO.Socket, next: (err?: any) => void) {
-    let user = socket.user;
+    let auth = socket.auth;
   }
 }
 ```
+*Note: auth method should return or resolve to null when passed, returned or resolved value is consedered as failure*
 
 ## USE DECORATOE
 
-Same as **HANDSHAKE** decorator, however no authorization supported
+Same as **HANDSHAKE** decorator, however no auth method expected.
 
 ```ts
 import { SERVICE, USE } from '@pestras/microservice';

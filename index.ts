@@ -1,13 +1,8 @@
 import * as http from 'http';
 import { URL, PathPattern } from 'tools-box/url';
 import { CODES } from 'tools-box/fetch/codes';
-import { connect, Client, Subscription } from 'ts-nats';
-import fetch from 'tools-box/fetch';
-import { Validall } from 'validall';
+import { connect, Client, Subscription, Msg, Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
 import * as SocketIO from 'socket.io';
-import * as Net from "net";
-import { ISchema } from 'validall/schema';
-import { Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
 import * as cluster from 'cluster';
 import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
@@ -22,10 +17,10 @@ interface Service {
 
 /**
  * Globals:
- * nats server, httpServer, SocketIO Server and the user service instance
+ * nats server, httpServer, SocketIO Server and the micro service instance
  */
 // let nats: Client;
-let server: Net.Server;
+let server: http.Server;
 let service: Service;
 
 /**
@@ -39,29 +34,9 @@ interface ProcessMsgsListeners {
 
 const processMsgsListners: ProcessMsgsListeners = {};
 
-export interface ValidatorDefualts {
-  strict?: boolean;
-  filter?: boolean;
-  required?: boolean;
-  nullable?: boolean;
-}
-
-const validatorDefualts: ValidatorDefualts = {
-  strict: false,
-  filter: false,
-  required: false,
-  nullable: false
-}
-
 export interface SocketIOOptions {
   serverOptions?: SocketIO.ServerOptions;
   maxListeners?: number;
-}
-
-export interface AuthOptions {
-  endpoint?: string;
-  subject?: string;
-  timeout?: number;
 }
 
 /**
@@ -72,11 +47,10 @@ export interface ServiceConfig {
   port?: number;
   workers?: number;
   logLevel?: LOGLEVEL;
-  validatorDefaults?: ValidatorDefualts;
   nats?: string | number | NatsConnectionOptions;
   exitOnUnhandledException?: boolean;
   socket?: SocketIOOptions;
-  auth?: AuthOptions;
+  authTimeout?: number;
 }
 
 /**
@@ -104,12 +78,11 @@ export function SERVICE(config: ServiceConfig = {}) {
       version: config.version || 0,
       workers: config.workers || 0,
       logLevel: config.logLevel || LOGLEVEL.INFO,
-      validatorDefaults: Object.assign(validatorDefualts, config.validatorDefaults || {}),
       exitOnUnhandledException: config.exitOnUnhandledException === undefined ? true : !!config.exitOnUnhandledException,
       port: config.port || 3888,
       nats: config.nats,
       socket: config.socket,
-      auth: config.auth
+      authTimeout: config.authTimeout > 0 ? config.authTimeout : 15000
     }
   }
 }
@@ -128,18 +101,16 @@ export interface RouteConfig {
   path?: string;
   method?: HttpMehod;
   requestType?: string;
-  body?: ISchema | ((body: any) => any);
+  body?: (routName: string, body: any) => any | Promise<any>;
   bodyQuota?: number;
-  query?: ISchema;
+  query?: (routName: string, query: any) => any | Promise<any>;
   queryLength?: number;
-  auth?: boolean;
+  auth?: (name: string, request: Request) => any | Promise<any>;
   timeout?: number;
 }
 
 interface RouteFullConfig extends RouteConfig {
   key?: string;
-  bodyValidator?: Validall | ((body: any) => any);
-  queryValidator?: Validall | ((body: any) => any)
 };
 
 /**
@@ -176,21 +147,17 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  body?: ISchema | ((data: any) => any);
-  bodyQuota?: number;
+  data?: (subject: string, data: any) => any | Promise<any>;
+  dataQuota?: number;
   payload?: Payload;
   options?: SubscriptionOptions;
-  auth?: boolean;
-}
-
-interface SubjectFullConfig extends SubjectConfig {
-  bodyValidator?: Validall | ((data: any) => any);
+  auth?: (subject: string, msg: Msg) => any | Promise<any>;
 }
 
 /**
  * Nats subjects repo that will hold all defined subjects
  */
-let serviceSubjects: { [key: string]: SubjectFullConfig } = {};
+let serviceSubjects: { [key: string]: SubjectConfig } = {};
 
 /**
  * Nats subject decorator
@@ -199,18 +166,13 @@ let serviceSubjects: { [key: string]: SubjectFullConfig } = {};
  */
 export function SUBJECT(config: SubjectConfig) {
   return (target: any, key: string) => {
-    let validator: Validall | ((data: any) => any);
-    if (config.body) {
-      if (typeof config.body === "function") validator = config.body;
-      else validator = new Validall({ id: key, schema: config.body, ...validatorDefualts })
-    } else validator = null;
-    serviceSubjects[key] = <SubjectFullConfig>{
+    serviceSubjects[key] = <SubjectConfig>{
       subject: config.subject,
       options: config.options || null,
-      bodyValidator: validator,
-      bodyQuota: config.bodyQuota || 1024 * 100,
+      data: config.data || null,
+      dataQuota: config.dataQuota || 1024 * 100,
       payload: config.payload || Payload.JSON,
-      auth: !!config.auth
+      auth: config.auth || null
     }
   };
 }
@@ -218,11 +180,11 @@ export function SUBJECT(config: SubjectConfig) {
 /**
  * Socket IO namespace config interface
  */
-export interface Namespace {
+export interface IONamespace {
   connect?: string;
   reconnect?: string;
   handshake?: string;
-  auth?: boolean;
+  auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket) => any | Promise<any>;
   use?: string;
   useSocket?: string;
   events?: { [key: string]: string };
@@ -232,7 +194,7 @@ export interface Namespace {
 /**
  * Socket IO namespaces repo
  */
-let serviceNamespaces: { [key: string]: Namespace } = {};
+let serviceNamespaces: { [key: string]: IONamespace } = {};
 
 /**
  * Socket IO connect decorator
@@ -267,12 +229,12 @@ export function RECONNECT(namespaces: string[] = ['default']) {
  * accepts list of namespaces names with auth boolean option
  * @param namespaces 
  */
-export function HANDSHAKE(namespaces: string[] = ['default'], auth = false) {
+export function HANDSHAKE(namespaces: string[] = ['default'], auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket) => any | Promise<any>) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
       serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
       serviceNamespaces[namespace].handshake = key;
-      serviceNamespaces[namespace].auth = !!auth
+      serviceNamespaces[namespace].auth = auth || null;
     }
   }
 }
@@ -335,61 +297,6 @@ export function DISCONNET(namespaces: string[] = ['default']) {
 }
 
 /**
- * auhtorize method payload interface
- */
-interface RequestPayload {
-  params?: { [key: string]: string | number };
-  query?: any;
-  body?: any;
-}
-
-interface AuthPayload {
-  service: string;
-  name: string;
-  payload: RequestPayload;
-}
-
-/**
- * Authorize user token
- * @param auth {string} user token
- * @param key {String}
- * @param payload {RequestPayload}
- * @returns {Any} User 
- */
-async function authorize(auth: string, name: string, payload: RequestPayload): Promise<any> {
-  if (!auth)
-    return null;
-
-  if (serviceConfig.auth.endpoint) {
-    let res = await fetch({
-      url: serviceConfig.auth.endpoint,
-      headers: { Authorization: `basic ${auth}` },
-      method: 'POST',
-      timeout: serviceConfig.auth.timeout || 15000,
-      data: <AuthPayload>{
-        service: service.constructor.name,
-        name,
-        payload
-      }
-    });
-
-    return res.data;
-  } else if (serviceConfig.auth.subject && Micro.nats) {
-    let res = await Micro.nats.request(serviceConfig.auth.subject, serviceConfig.auth.timeout || 15000, JSON.stringify({
-      auth,
-      service: service.constructor.name,
-      name,
-      payload
-    }));
-
-    return res.data;
-
-  } else {
-    logger.warn('auth options was not provided', name);
-  }
-}
-
-/**
  * Finds the matched route method declared whtin the service
  * @param url {URL}
  * @param method {HttpMethod}
@@ -417,8 +324,7 @@ export class Request {
   method: HttpMehod;
   params: { [key: string]: string };
   body: any;
-  user?: any;
-  auth?: string;
+  auth?: any;
 
   constructor(public http: http.IncomingMessage) {
     this.url = new URL('http://' + this.http.headers.host + this.http.url);
@@ -521,9 +427,7 @@ function createServer() {
         if (ret && ret.then !== undefined) await ret;
       }
 
-      console.log('request.url.pathname');
       if (request.url.pathname.indexOf('/socket.io') === 0) {
-        console.log(serviceNamespaces);
         if (Object.keys(serviceNamespaces).length === 0) return response.status(CODES.NOT_FOUND).end();
       } else {
 
@@ -537,76 +441,82 @@ function createServer() {
 
         request.params = params;
 
-        if (route.auth) {
-          let auth = request.http.headers.authorization ? request.http.headers.authorization.split(' ')[1] : null;
-          if (!auth) return response.status(CODES.UNAUTHORIZED).end("unauthorized");
-          let user = await authorize(auth, route.name, { params: request.params, query: request.url.query, body: request.body });
-          if (!user) return response.status(CODES.UNAUTHORIZED).end("unauthorized");
-          request.user = user;
-          request.auth = auth;
-        }
-
         let queryStr = request.url.href.split('?')[1];
-        if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength) return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
-        if (route.queryValidator) {
-          if (typeof route.queryValidator === "function") {
-            let ret = route.queryValidator(request.url.query);
-            if (ret) {
-              if (typeof ret.then === "function") {
-                try {
-                  let err = await ret;
-                  if (err) {
-                    logger.warn(err, { route: route.name });
-                    return response.status(CODES.BAD_REQUEST).json(err);
-                  }
-                } catch (err) {
-                  logger.error(err, { route: route.name });
-                  return response.status(CODES.UNKNOWN_ERROR).json(err);
+        if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
+          return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
+
+        if (typeof route.query === "function") {
+          let ret = route.query(route.name, request.url.query);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret;
+                if (err) {
+                  logger.warn(err, { route: route.name });
+                  return response.status(CODES.BAD_REQUEST).json(err);
                 }
-              } else {
-                logger.warn(ret, { route: route.name });
-                return response.status(CODES.BAD_REQUEST).json(ret);
+              } catch (err) {
+                logger.error(err, { route: route.name });
+                return response.status(CODES.UNKNOWN_ERROR).json(err);
               }
-            }
-          } else {
-            let success = route.queryValidator.validate(request.url.query);
-            if (!success) {
-              logger.warn(route.queryValidator.error.message, { route: route.name });
-              return response.status(CODES.BAD_REQUEST).json(route.queryValidator.error.message);
+            } else {
+              logger.warn(ret, { route: route.name });
+              return response.status(CODES.BAD_REQUEST).json(ret);
             }
           }
         }
 
-        if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length']) return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
+        if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
+          return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
-        if (route.bodyValidator) {
-          if (typeof route.bodyValidator === "function") {
-            let ret = route.bodyValidator(request.body);
-            if (ret) {
-              if (typeof ret.then === "function") {
-                try {
-                  let err = await ret;
-                  if (err) {
-                    logger.warn(err, { route: route.name });
-                    return response.status(CODES.BAD_REQUEST).json(err);
-                  }
-                } catch (err) {
-                  logger.error(err, { route: route.name });
-                  return response.status(CODES.UNKNOWN_ERROR).json(err);
+        if (typeof route.body === "function") {
+          let ret = route.body(route.name, request.body);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret;
+                if (err) {
+                  logger.warn(err, { route: route.name });
+                  return response.status(CODES.BAD_REQUEST).json(err);
                 }
-              } else {
-                logger.warn(ret, { route: route.name });
-                return response.status(CODES.BAD_REQUEST).json(ret);
+              } catch (err) {
+                logger.error(err, { route: route.name });
+                return response.status(CODES.UNKNOWN_ERROR).json(err);
               }
-            }
-          } else {
-            let success = route.bodyValidator.validate(request.body);
-            if (!success) {
-              logger.warn(route.bodyValidator.error.message, { route: route.name });
-              return response.status(CODES.BAD_REQUEST).json(route.bodyValidator.error.message);
+            } else {
+              logger.warn(ret, { route: route.name });
+              return response.status(CODES.BAD_REQUEST).json(ret);
             }
           }
         }
+
+        if (typeof route.auth === "function") {
+          let authTimer = setTimeout(() => {
+            logger.error('auth timeout', { route: route.name });
+            response.status(CODES.SERVIC_UNAVAILABLE).end('auth timeout');
+          }, serviceConfig.authTimeout);
+
+          let ret = route.auth(route.name, request);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret;
+                clearTimeout(authTimer);
+                if (!!err) return response.status(CODES.UNAUTHORIZED).end(err);
+              } catch (err) {
+                clearTimeout(authTimer);
+                logger.error(err);
+                return response.status(CODES.UNKNOWN_ERROR).end(err.message || err);
+              }
+            } else {
+              clearTimeout(authTimer);
+              return response.status(CODES.UNAUTHORIZED).end(ret);
+            }
+          }
+
+          clearTimeout(authTimer);
+        }
+
 
         try {
           service[route.key](request, response);
@@ -648,36 +558,54 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
         logger.debug('msg:');
         logger.debug(msg);
 
-        if (subjectConf.auth) {
-          let user = await authorize(msg.data.authorization, subjectConf.subject, { body: msg.data });
-          if (!user) return logger.warn(`unauthorized message: ${subjectConf.subject}`);
-          msg.data.user = user;
-        }
-
-        if (subjectConf.bodyQuota && subjectConf.bodyQuota < msg.size)
+        if (subjectConf.dataQuota && subjectConf.dataQuota < msg.size)
           return logger.warn('msg body quota exceeded');
 
-        if (subjectConf.bodyValidator) {
-          if (typeof subjectConf.bodyValidator === "function") {
-            let ret = subjectConf.bodyValidator(msg.data);
-            if (ret) {
-              if (typeof ret.then === "function") {
-                try {
-                  let err = await ret;
-                  if (err) {
-                    return logger.warn(err, { subject: subjectConf.subject });
-                  }
-                } catch (err) {
-                  return logger.error(err, { subject: subjectConf.subject });
+        if (typeof subjectConf.data === "function") {
+          let ret = subjectConf.data(subjectConf.subject, msg.data);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret;
+                if (err) {
+                  return logger.warn(err, { subject: subjectConf.subject });
                 }
-              } else {
-                return logger.warn(ret, { subject: subjectConf.subject });
+              } catch (err) {
+                return logger.error(err, { subject: subjectConf.subject });
               }
+            } else {
+              return logger.warn(ret, { subject: subjectConf.subject });
             }
-          } else {
-            let success = subjectConf.bodyValidator.validate(msg.data);
-            if (!success) return logger.warn(subjectConf.bodyValidator.error.message, { subject: subjectConf.subject });
           }
+        }
+
+        if (typeof subjectConf.auth === "function") {
+          let authTimer = setTimeout(() => {
+            logger.error('auth timeout', { subject: subjectConf.subject });
+            if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
+          }, serviceConfig.authTimeout);
+
+          let ret = subjectConf.auth(subjectConf.subject, msg);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret;
+                if (!!err) {
+                  clearTimeout(authTimer);
+                  return logger.warn(err);
+                }
+              } catch (err) {
+                clearTimeout(authTimer);
+                if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
+                return logger.error(err);
+              }
+            } else {
+              clearTimeout(authTimer);
+              return logger.warn(ret);
+            }
+          }
+
+          clearTimeout(authTimer);
         }
 
         try {
@@ -703,7 +631,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
  * @param namespace 
  * @param options 
  */
-async function initializeNamespace(io: SocketIO.Server, namespace: string, options: Namespace) {
+async function initializeNamespace(io: SocketIO.Server, namespace: string, options: IONamespace) {
   let ns = namespace === 'default' ? io : io.of(`/${namespace}`);
 
   if (options.handshake || options.use) {
@@ -711,21 +639,35 @@ async function initializeNamespace(io: SocketIO.Server, namespace: string, optio
       options.use && typeof service[options.use] === "function" && service[options.use](ns, socket, next);
 
       if (options.handshake && typeof service[options.handshake] === "function") {
-        if (options.auth) {
-          let token = socket.handshake.query.auth;
 
-          if (!token)
-            return next(new Error('token_required'));
+        if (typeof options.auth === "function") {
+          let authTimer = setTimeout(() => {
+            logger.error('handshake auth timeout');
+            next('handshake auth timeout');
+          }, serviceConfig.authTimeout);
 
-          try {
-            let user = await authorize(token, namespace, null);
-            (<any>socket).user = user;
-          } catch (e) {
-            if (e.statusCode && e.error) return next(new Error(e.error.message));
-            return next(new Error('error_authorizing_request'));
+          let ret = options.auth(ns, socket);
+          if (ret) {
+            if (typeof ret.then === "function") {
+              try {
+                let err = await ret.then;
+                if (err) {
+                  clearTimeout(authTimer);
+                  logger.warn(err);
+                  return next(err);
+                }
+              } catch (err) {
+                clearTimeout(authTimer);
+                logger.error(err);
+                next(err.message || err);
+              }
+            } else {
+              clearTimeout(authTimer);
+              logger.warn(ret);
+              return next(ret);
+            }
           }
-
-          service[options.handshake](ns, socket, next);
+          clearTimeout(authTimer);
         }
       }
     });
@@ -740,7 +682,7 @@ async function initializeNamespace(io: SocketIO.Server, namespace: string, optio
       });
     if (options.useSocket)
       socket.use((packet, next) => {
-        try { service[options.useSocket](ns, packet, next); } catch (e) { logger.error(e, { event: { name: 'userSocket' } }) }
+        try { service[options.useSocket](ns, packet, next); } catch (e) { logger.error(e, { event: { name: 'useSocket' } }) }
       });
     if (options.disconnect)
       socket.on('disconnect', () => {
@@ -911,27 +853,17 @@ export class Micro {
       });
 
     for (let config of serviceRoutesRepo) {
-      let BodyValidator: Validall | ((body: any) => any);
-      let queryValidator: Validall | ((query: any) => any);
-      if (config.body) {
-        if (typeof config.body === "function") BodyValidator = config.body;
-        else BodyValidator = new Validall({ id: `${config.key}Body`, schema: config.body, ...validatorDefualts });
-      } else BodyValidator = null;
-      if (config.query) {
-        if (typeof config.query === "function") queryValidator = config.query;
-        else queryValidator = new Validall({ id: `${config.key}Query`, schema: config.query, ...validatorDefualts });
-      } else queryValidator = null;
 
       let route: RouteFullConfig = {
         path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + (config.path || '')),
         name: config.name || config.key,
         method: config.method || 'GET',
         requestType: config.requestType || 'application/json',
-        bodyValidator: BodyValidator,
+        body: config.body || null,
         bodyQuota: config.bodyQuota || 1024 * 100,
-        queryValidator: queryValidator,
+        query: config.query || null,
         queryLength: config.queryLength || 100,
-        auth: !!config.auth,
+        auth: config.auth || null,
         timeout: (!config.timeout || config.timeout < 0) ? 1000 * 15 : config.timeout,
         key: config.key
       };

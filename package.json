@@ -1,6 +1,6 @@
 {
   "name": "@pestras/microservice",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Nodejs typescript microservice",
   "main": "index.js",
   "types": "index.ts",
@@ -36,7 +36,6 @@
   "dependencies": {
     "socket.io": "^2.3.0",
     "tools-box": "^0.1.36",
-    "ts-nats": "^1.2.4",
-    "validall": "^3.0.16"
+    "ts-nats": "^1.2.4"
   }
 }
