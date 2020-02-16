@@ -1,6 +1,6 @@
 # Pestras Microservice
 
-**Pestras Microservice** as **PMS** is built on nodejs framework using typescript, supporting http rest service, nats server, socker io and can run multible instances based on
+**Pestras Microservice** as **PMS** is built on nodejs framework using typescript, supporting http rest service, nats server, socket io and can run multible instances based on
 nodejs cluster with messageing made easy between workers.
 
 ## Creating Service
@@ -147,7 +147,7 @@ class Article {
 
 ### Request
 
-*PMS** http request holds the original Node IncomingMessage with a few extra properties*
+**PMS** http request holds the original Node IncomingMessage with a few extra properties.
 
 Name | Type | Description
 --- | --- | ---
@@ -160,7 +160,7 @@ http | NodeJS.IncomingMessage |
 
 ### Response
 
-*PMS** http response holds the original Node Server Response with a couple of methods.
+**PMS** http response holds the original Node Server Response with a couple of methods.
 
 Name | Type | Description
 --- | --- | ---
@@ -330,7 +330,7 @@ class Publisher {
   @EVENT('userLoggedIn')
   userLoggedIn(io: SocketIO.Servier, socket: SocketIO.Socket, ...args: any[]) {}
 
-  @EVENT(['newArticle', 'blog'])
+  @EVENT('newArticle', ['blog'])
   newArticle(ns: SocketIO.Namespace, socket: SocketIO.Socket, ...args: any[]) {}
 }
 ```
