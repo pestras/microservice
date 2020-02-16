@@ -59,28 +59,6 @@ Name | Type | default | Description
 serverOptions | SocketIO.ServerOptions | null | see [socket.io docs](https://socket.io/docs/server-api/)
 maxListeners  | number  | 10 |
 
-### AuthOptions
-
-Name | Type | default
---- | --- | ---
-endpoint | string | null
-subject | string | null
-timeout | number | 15000
-
-When defined **PMS** will use these options when authorizing routes, subjects and socketIO connection, if both *endpoint* and *subject* are defined **PMS** will use *endpoint*.
-
-*endpoint* option is a REST service url that will be called with post method sending additional data in the request body **AuthPayload**.
-
-Name | Type | Description
---- | --- | ---
-service | string | Service name *class constructor name*
-name | string | Route name, nats subject or socket namespace. 
-payload | { params: Object, query, Object, body: Object }
-
-In case of authorizing routes, incoming request params, query and body will be sent in the payload object of auth request, and in case of nats subjects msg data will be sent in *payload.body* only.
-
-Each auth request will send auth token in **Authorization** header, it will get it from **Authorization** header in case of route request, and nats subject *msg.data.authoraization*, and for socket.io *socket.handshake.query.auth*
-
 ## Micro
 
 Before delving into service routes, subjects.. etc, let's find out how to run our service..
