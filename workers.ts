@@ -86,7 +86,7 @@ export class WorkersManager {
 
     cluster.on('exit', (worker, code, signal) => {
       if (code !== 0) {
-        this.logger.warn(`Worker ${worker.id} crashed`);
+        this.logger.warn(`Worker ${worker.id} crashed -signal: ${signal}`);
         this.logger.warn(`Starting new worker`);
         cluster.fork;
       }

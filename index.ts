@@ -901,8 +901,6 @@ export class Micro {
     process.on('SIGTERM', (signal) => destory(signal));
     process.on('SIGHUP', (signal) => destory(signal));
     process.on('SIGINT', (signal) => destory(signal));
-    process.on('SIGKILL', (signal) => destory(signal));
-    process.on('SIGQUIT', (signal) => destory(signal));
 
     server.listen(serviceConfig.port, () => logger.info(`running http server on port: ${serviceConfig.port}, pid: ${process.pid}`));
   }
