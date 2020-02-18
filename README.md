@@ -494,7 +494,7 @@ class Publisher {
 Called once our service is stopped for any reason, and the exit signal is passed as an argument.
 
 ```ts
-@SERVICE({ workers: 4 })
+@SERVICE()
 class Publisher {
 
   onDestory(signal: NodeJS.Signals) {
@@ -512,7 +512,7 @@ Events methods will be called when some specific actions happens..
 Called whenever a new http request is received, passing the Request and Response instances as arguments, it can return a promise or nothing;
 
 ```ts
-@SERVICE({ workers: 4 })
+@SERVICE()
 class Publisher {
 
   async onRequest(req: Request, res: Response) { }
@@ -520,6 +520,22 @@ class Publisher {
 ```
 
 This event method is called before authorizing the request or even before checking if there is a matched route or not.
+
+### on404
+
+Called whenever http request has no route handler found.
+
+```ts
+@SERVICE()
+class Publisher {
+
+  on404(req: Request, res: Response) {
+
+  }
+}
+```
+
+When implemented response should be implemented as well
 
 ### onError
 

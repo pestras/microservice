@@ -433,7 +433,10 @@ function createServer() {
 
         let { route, params } = findRoute(request.url, <HttpMehod>request.method);
 
-        if (!route || typeof service[route.key] !== "function") return response.status(CODES.NOT_FOUND).end();
+        if (!route || typeof service[route.key] !== "function") {
+          if (typeof service.on404 === "function") return service.on404(request, response);
+          return response.status(CODES.NOT_FOUND).end();
+        }
 
         timer = setTimeout(() => {
           response.status(CODES.REQUEST_TIMEOUT).end('request time out');
