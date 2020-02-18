@@ -323,6 +323,7 @@ export class Request {
   params: { [key: string]: string };
   body: any;
   auth?: any;
+  readonly locals: { [key: string]: any } = {};
 
   constructor(public http: http.IncomingMessage) {
     this.url = new URL('http://' + this.http.headers.host + this.http.url);

@@ -155,6 +155,7 @@ params | { [key: string]: string } | includes route path params values.
 body | any |
 auth | any | useful to save some auth value.
 get | (key: string) => string | method to get specific request header value
+locals | Object | to set any additional data 
 http | NodeJS.IncomingMessage | 
 
 ### Response
