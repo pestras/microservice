@@ -99,11 +99,10 @@ name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern very similar to express route path
 method | HttpMethod | 'GET' | 
 requestType | string | 'application/json | Same as 'Content-Type' header
-body | (routeName: string, body: any) => any \| Promise\<any\> | null | validation method
+validate | (req: Request, res: Response) => boolean \| Promise\<boolean\> | null | validation method
 bodyQuota | number | 1024 * 100 | Request body size limit
-query | (routeName: string, query: any) => any \| Promise\<any\> | null | validation method
 queryLength | number | 100 | Request query characters length limit
-auth | (routeName: string, request: Request) => any \| Promise\<any\> | null | auth method
+auth | (request: Request, res: Response) => boolean \| Promise\<boolean\> | null | auth method
 timeout | number | 15000 | Max time to handle the request before canceling
 
 ```ts
@@ -128,7 +127,7 @@ class Article {
 
   @ROUTE({
     method: 'POST',
-    auth: async (routName: string, request: Request) => {
+    auth: async (req: Request, res: Response) => {
       //  some authorization
     }
   })
@@ -143,7 +142,7 @@ class Article {
 }
 ```
 
-*Note: All validation and auth methods should return or resolve to null when passed, returned or resolved values are consedered as validation or auth failure*
+*Note: Both validation and auth methods should handle the response on failure returning or resolving to false*
 
 ### Request
 
@@ -178,11 +177,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-data | (data: any) => any \| Promise\<any\> | null | validation method
+validate | (data: any) => boolean \| Promise\<boolean\> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
-payload | NatsPayload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
-options | SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | (routName: string, request: Request) => any \| Promise\<any\> | false | null | auth method
+payload | Nats.Payload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
+options | Nats.SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
+auth | (msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
@@ -205,10 +204,6 @@ class Email {
     let auth = msg.data.auth;
   }
 ```
-
-*Note: Both validation and auth methods should return or resolve to null when passed, returned or resolved values are consedered as validation or auth failure*
-
-*Note: Incase of validation or auth failer, **PMS** will automatically reply if msg has reply subject*
 
 # SocketIO
 
@@ -268,14 +263,9 @@ class Publisher {
   @HANDSHAKE()
   handshake(io: SocketIO.Servier, socket: SocketIO.Socket, next: (err?: any) => void) {}
 
-  @HANDSHAKE(
-    ['blog'],
-    async (ns: SocketIO.Namespace, socket: SocketIO.Socket) => {
-      //  some authorization
-    }
-  )
+  @HANDSHAKE(['blog'])
   blogHandshake(ns: SocketIO.Namespace, socket: SocketIO.Socket, next: (err?: any) => void) {
-    let auth = socket.auth;
+    
   }
 }
 ```

@@ -101,11 +101,10 @@ export interface RouteConfig {
   path?: string;
   method?: HttpMehod;
   requestType?: string;
-  body?: (routName: string, body: any) => any | Promise<any>;
+  validate?: (request: Request, response: Response) => boolean | Promise<boolean>;
   bodyQuota?: number;
-  query?: (routName: string, query: any) => any | Promise<any>;
   queryLength?: number;
-  auth?: (name: string, request: Request) => any | Promise<any>;
+  auth?: (request: Request, response: Response) => boolean | Promise<boolean>;
   timeout?: number;
 }
 
@@ -147,11 +146,11 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  data?: (subject: string, data: any) => any | Promise<any>;
+  validate?: (data: any) => boolean | Promise<boolean>;
   dataQuota?: number;
   payload?: Payload;
   options?: SubscriptionOptions;
-  auth?: (subject: string, msg: Msg) => any | Promise<any>;
+  auth?: (msg: Msg) => boolean | Promise<boolean>;
 }
 
 /**
@@ -169,7 +168,7 @@ export function SUBJECT(config: SubjectConfig) {
     serviceSubjects[key] = <SubjectConfig>{
       subject: config.subject,
       options: config.options || null,
-      data: config.data || null,
+      validate: config.validate || null,
       dataQuota: config.dataQuota || 1024 * 100,
       payload: config.payload || Payload.JSON,
       auth: config.auth || null
@@ -184,7 +183,7 @@ export interface IONamespace {
   connect?: string;
   reconnect?: string;
   handshake?: string;
-  auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket) => any | Promise<any>;
+  auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket, next: (err: any) => any) => any | Promise<any>;
   use?: string;
   useSocket?: string;
   events?: { [key: string]: string };
@@ -229,12 +228,11 @@ export function RECONNECT(namespaces: string[] = ['default']) {
  * accepts list of namespaces names with auth boolean option
  * @param namespaces 
  */
-export function HANDSHAKE(namespaces: string[] = ['default'], auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket) => any | Promise<any>) {
+export function HANDSHAKE(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
       serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
       serviceNamespaces[namespace].handshake = key;
-      serviceNamespaces[namespace].auth = auth || null;
     }
   }
 }
@@ -258,7 +256,7 @@ export function USE(namespaces: string[] = ['default']) {
  * accepts list of namespaces names
  * @param namespaces 
  */
-export function USESOCLET(namespaces: string[] = ['default']) {
+export function USESOCKET(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
       serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
@@ -448,48 +446,21 @@ function createServer() {
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
-        if (typeof route.query === "function") {
-          let ret = route.query(route.name, request.url.query);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret;
-                if (err) {
-                  logger.warn(err, { route: route.name });
-                  return response.status(CODES.BAD_REQUEST).json(err);
-                }
-              } catch (err) {
-                logger.error(err, { route: route.name });
-                return response.status(CODES.UNKNOWN_ERROR).json(err);
-              }
-            } else {
-              logger.warn(ret, { route: route.name });
-              return response.status(CODES.BAD_REQUEST).json(ret);
-            }
-          }
-        }
-
         if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
-        if (typeof route.body === "function") {
-          let ret = route.body(route.name, request.body);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret;
-                if (err) {
-                  logger.warn(err, { route: route.name });
-                  return response.status(CODES.BAD_REQUEST).json(err);
-                }
-              } catch (err) {
-                logger.error(err, { route: route.name });
-                return response.status(CODES.UNKNOWN_ERROR).json(err);
+        if (typeof route.validate === "function") {
+          try {
+            let ret = route.validate(request, response);
+            if (ret) {
+              if (typeof (<Promise<boolean>>ret).then === "function") {
+                let passed = await ret;
+                if (!passed) return;
               }
-            } else {
-              logger.warn(ret, { route: route.name });
-              return response.status(CODES.BAD_REQUEST).json(ret);
-            }
+            } else return;
+          } catch (err) {
+            logger.error(err, { route: route.name });
+            return response.status(CODES.UNKNOWN_ERROR).json(err);
           }
         }
 
@@ -499,25 +470,23 @@ function createServer() {
             response.status(CODES.SERVIC_UNAVAILABLE).end('auth timeout');
           }, serviceConfig.authTimeout);
 
-          let ret = route.auth(route.name, request);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret;
+          try {
+            let ret = route.auth(request, response);
+            if (ret) {
+              if (typeof (<Promise<boolean>>ret).then === "function") {
+                let passed = await ret;
                 clearTimeout(authTimer);
-                if (!!err) return response.status(CODES.UNAUTHORIZED).end(err);
-              } catch (err) {
-                clearTimeout(authTimer);
-                logger.error(err);
-                return response.status(CODES.UNKNOWN_ERROR).end(err.message || err);
+                if (!passed) return;
               }
             } else {
               clearTimeout(authTimer);
-              return response.status(CODES.UNAUTHORIZED).end(ret);
+              return;
             }
+          } catch (err) {
+            clearTimeout(authTimer);
+            logger.error(err);
+            return response.status(CODES.UNKNOWN_ERROR).end(err.message || err);
           }
-
-          clearTimeout(authTimer);
         }
 
 
@@ -566,24 +535,18 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
           return logger.warn('msg body quota exceeded');
         }
 
-        if (typeof subjectConf.data === "function") {
-          let ret = subjectConf.data(subjectConf.subject, msg.data);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret;
-                if (err) {
-                  if (msg.reply) Micro.nats.publish(msg.reply, err);
-                  return logger.warn(err, { subject: subjectConf.subject });
-                }
-              } catch (err) {
-                if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
-                return logger.error(err, { subject: subjectConf.subject });
+        if (typeof subjectConf.validate === "function") {
+          try {
+            let ret = subjectConf.validate(msg.data);
+            if (ret) {
+              if (typeof (<Promise<any>>ret).then === "function") {
+                let passed = await ret;
+                if (!passed) return;
               }
-            } else {
-              if (msg.reply) Micro.nats.publish(msg.reply, ret);
-              return logger.warn(ret, { subject: subjectConf.subject });
-            }
+            } else return;
+          } catch (err) {
+            if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
+            return logger.error(err, { subject: subjectConf.subject });
           }
         }
 
@@ -593,29 +556,23 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
             if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
           }, serviceConfig.authTimeout);
 
-          let ret = subjectConf.auth(subjectConf.subject, msg);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret;
-                if (!!err) {
-                  clearTimeout(authTimer);
-                  if (msg.reply) Micro.nats.publish(msg.reply, err);
-                  return logger.warn(err);
-                }
-              } catch (err) {
+          try {
+            let ret = subjectConf.auth(msg);
+            if (ret) {
+              if (typeof (<Promise<any>>ret).then === "function") {
+                let passed = await ret;
                 clearTimeout(authTimer);
-                if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
-                return logger.error(err);
-              }
+                if (!passed) return;
+              } else clearTimeout(authTimer);
             } else {
               clearTimeout(authTimer);
-              if (msg.reply) Micro.nats.publish(msg.reply, ret);
-              return logger.warn(ret);
+              return;
             }
+          } catch (err) {
+            clearTimeout(authTimer);
+            if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
+            return logger.error(err);
           }
-
-          clearTimeout(authTimer);
         }
 
         try {
@@ -647,39 +604,7 @@ async function initializeNamespace(io: SocketIO.Server, namespace: string, optio
   if (options.handshake || options.use) {
     ns.use(async (socket, next) => {
       options.use && typeof service[options.use] === "function" && service[options.use](ns, socket, next);
-
-      if (options.handshake && typeof service[options.handshake] === "function") {
-
-        if (typeof options.auth === "function") {
-          let authTimer = setTimeout(() => {
-            logger.error('handshake auth timeout');
-            next('handshake auth timeout');
-          }, serviceConfig.authTimeout);
-
-          let ret = options.auth(ns, socket);
-          if (ret) {
-            if (typeof ret.then === "function") {
-              try {
-                let err = await ret.then;
-                if (err) {
-                  clearTimeout(authTimer);
-                  logger.warn(err);
-                  return next(err);
-                }
-              } catch (err) {
-                clearTimeout(authTimer);
-                logger.error(err);
-                next(err.message || err);
-              }
-            } else {
-              clearTimeout(authTimer);
-              logger.warn(ret);
-              return next(ret);
-            }
-          }
-          clearTimeout(authTimer);
-        }
-      }
+      options.handshake && typeof service[options.handshake] === "function" && service[options.handshake](ns, socket, next);
     });
   }
 
@@ -869,9 +794,8 @@ export class Micro {
         name: config.name || config.key,
         method: config.method || 'GET',
         requestType: config.requestType || 'application/json',
-        body: config.body || null,
+        validate: config.validate || null,
         bodyQuota: config.bodyQuota || 1024 * 100,
-        query: config.query || null,
         queryLength: config.queryLength || 100,
         auth: config.auth || null,
         timeout: (!config.timeout || config.timeout < 0) ? 1000 * 15 : config.timeout,
