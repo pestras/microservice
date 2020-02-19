@@ -183,7 +183,6 @@ export interface IONamespace {
   connect?: string;
   reconnect?: string;
   handshake?: string;
-  auth?: (ns: SocketIO.Namespace | SocketIO.Server, socket: SocketIO.Socket, next: (err: any) => any) => any | Promise<any>;
   use?: string;
   useSocket?: string;
   events?: { [key: string]: string };
@@ -452,7 +451,7 @@ function createServer() {
 
         if (typeof route.validate === "function") {
           try {
-            let ret = route.validate(request, response);
+            let ret = route.validate.call(service, request, response);
             if (ret) {
               if (typeof (<Promise<boolean>>ret).then === "function") {
                 let passed = await ret;
@@ -472,7 +471,7 @@ function createServer() {
           }, serviceConfig.authTimeout);
 
           try {
-            let ret = route.auth(request, response);
+            let ret = route.auth.call(service, request, response);
             if (ret) {
               if (typeof (<Promise<boolean>>ret).then === "function") {
                 let passed = await ret;
@@ -538,7 +537,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
 
         if (typeof subjectConf.validate === "function") {
           try {
-            let ret = subjectConf.validate(msg.data);
+            let ret = subjectConf.validate.call(service, msg.data);
             if (ret) {
               if (typeof (<Promise<any>>ret).then === "function") {
                 let passed = await ret;
@@ -558,7 +557,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
           }, serviceConfig.authTimeout);
 
           try {
-            let ret = subjectConf.auth(msg);
+            let ret = subjectConf.auth.call(service, msg);
             if (ret) {
               if (typeof (<Promise<any>>ret).then === "function") {
                 let passed = await ret;

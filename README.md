@@ -127,7 +127,8 @@ class Article {
 
   @ROUTE({
     method: 'POST',
-    auth: async (req: Request, res: Response) => {
+    // context is the service instance
+    auth: async function (this: Article, req: Request, res: Response) {
       //  some authorization
     }
   })
@@ -142,7 +143,8 @@ class Article {
 }
 ```
 
-*Note: Both validation and auth methods should handle the response on failure returning or resolving to false*
+*Note: Both validation and auth methods should handle the response on failure and returning or resolving to false, also the context is changed to the service instance
+but we need to inform typescript by defining the type of 'this' to the service class name.*
 
 ### Request
 
@@ -196,7 +198,7 @@ class Email {
 
   @SUBJECT({
     subject: 'user.insert',
-    auth: async (subject: string, msg: Msg) => {
+    auth: async function (this: Email, subject: string, msg: Msg) {
       //  some authorization
     },
     options: { queue: 'emailServiceWorker' }
@@ -206,13 +208,16 @@ class Email {
   }
 ```
 
+*Note: Both validation and auth methods context is changed to the service instance
+but we need to inform typescript by defining the type of 'this' to the service class name.*
+
 # SocketIO
 
 **PMS** provides us with several decoratoes to manage our SocketIO server.
 
 ## CONNECT DECORATOR
 
-This decorator wiil call the method attached to whenever a new socket has connected,
+This decorator will call the method attached to whenever a new socket has connected,
 it accepts an optional array of namespaces names, defaults to ['default'] which is the main **io** server instance.
 
 ```ts
