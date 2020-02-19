@@ -60,7 +60,7 @@ export class Logger {
     return data;
   }
 
-  private log(mode: LOGLEVEL, msg: any, meta?: any) {
+  log(mode: LOGLEVEL, msg: any, meta?: any) {
     let color = (<any>COLOR)[LOGLEVEL[mode]];
     console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, msg, new Date().toTimeString());
     !!meta && console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, this.stringify(meta), new Date().toTimeString());
