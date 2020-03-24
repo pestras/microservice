@@ -22,6 +22,7 @@ version     | number   | 0               | Current verion of our service, versio
 port        | number   | 3888            | Http server listening port.   
 workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
 logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
+tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **log** method
 nats        | string \| number \| NatsConnectionOptions | null        | see [Nats Docs](https://docs.nats.io/)
 exitOnUnhandledException | boolean | true |
 socket | SocketIOOptions | null |
@@ -38,12 +39,16 @@ authTimeout | number | 15000 | auth method timeout
 
 **PMS** has a built in lightweight logger that logs everything to the console.
 
-In order to change that behavior we can define a log method in our service and **PMS** will detect that method and will transfer all logs to it;
+In order to change that behavior we can define a log method in our service and **PMS** will detect that method and will transfer all logs to it, besides to setting the **transferLog**
+options in service config to true
 
 ```ts
 import { SERVICE } from '@pestras/microservice';
 
-@SERVICE({ version: 1 })
+@SERVICE({
+  version: 1
+  transferLog: process.env.NODE_ENV === 'production'
+})
 class Test {
 
   log(level: LOGLEVEL, msg: any, extra: any) {
@@ -181,11 +186,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-validate | (data: any) => boolean \| Promise\<boolean\> | null | validation method
+validate | (nats: NatsClient, data: any) => boolean \| Promise\<boolean\> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | Nats.Payload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | Nats.SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | (msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
+auth | (nats: NatsClient, msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
@@ -199,7 +204,7 @@ class Email {
 
   @SUBJECT({
     subject: 'user.insert',
-    auth: async function (this: Email, subject: string, msg: Msg) {
+    auth: async function (this: Email, nats: NatsClient, msg: Msg) {
       //  some authorization
     },
     options: { queue: 'emailServiceWorker' }

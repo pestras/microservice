@@ -48,6 +48,7 @@ export interface ServiceConfig {
   port?: number;
   workers?: number;
   logLevel?: LOGLEVEL;
+  transferLog?: boolean;
   nats?: string | number | NatsConnectionOptions;
   exitOnUnhandledException?: boolean;
   socket?: SocketIOOptions;
@@ -79,6 +80,7 @@ export function SERVICE(config: ServiceConfig = {}) {
       version: config.version || 0,
       workers: config.workers || 0,
       logLevel: config.logLevel || LOGLEVEL.INFO,
+      transferLog: !!config.transferLog,
       exitOnUnhandledException: config.exitOnUnhandledException === undefined ? true : !!config.exitOnUnhandledException,
       port: config.port || 3888,
       nats: config.nats,
@@ -538,7 +540,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
 
         if (typeof subjectConf.validate === "function") {
           try {
-            let ret = subjectConf.validate.call(service, msg.data);
+            let ret = subjectConf.validate.call(service, nats, msg.data);
             if (ret) {
               if (typeof (<Promise<any>>ret).then === "function") {
                 let passed = await ret;
@@ -558,7 +560,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
           }, serviceConfig.authTimeout);
 
           try {
-            let ret = subjectConf.auth.call(service, msg);
+            let ret = subjectConf.auth.call(service, nats, msg);
             if (ret) {
               if (typeof (<Promise<any>>ret).then === "function") {
                 let passed = await ret;
@@ -771,7 +773,7 @@ export class Micro {
     service = new ServiceClass();
     logger.level = serviceConfig.logLevel;
 
-    if (typeof service.log === 'function')
+    if (typeof service.log === 'function' && serviceConfig.transferLog)
       logger.implements(service);
 
     if (typeof service.onInit === "function") {
