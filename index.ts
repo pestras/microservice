@@ -2,11 +2,16 @@ import * as http from 'http';
 import { URL, PathPattern } from 'tools-box/url';
 import fetch, { IFetchOptions } from 'tools-box/fetch';
 import { CODES } from 'tools-box/fetch/codes';
-import { connect, Client, Subscription, Msg, Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
+// import { connect, Client, Subscription, Msg, Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
+import * as Nats from 'ts-nats';
 import * as SocketIO from 'socket.io';
 import * as cluster from 'cluster';
 import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
+
+export interface NatsMsg<T = any> extends Nats.Msg {
+  data: T;
+}
 
 /**
  * Service Interface
@@ -49,7 +54,7 @@ export interface ServiceConfig {
   workers?: number;
   logLevel?: LOGLEVEL;
   transferLog?: boolean;
-  nats?: string | number | NatsConnectionOptions;
+  nats?: string | number | Nats.NatsConnectionOptions;
   exitOnUnhandledException?: boolean;
   socket?: SocketIOOptions;
   authTimeout?: number;
@@ -149,11 +154,11 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  validate?: (nats: Client, msg: Msg) => boolean | Promise<boolean>;
+  validate?: (nats: Nats.Client, msg: Nats.Msg) => boolean | Promise<boolean>;
   dataQuota?: number;
-  payload?: Payload;
-  options?: SubscriptionOptions;
-  auth?: (nats: Client, msg: Msg) => boolean | Promise<boolean>;
+  payload?: Nats.Payload;
+  options?: Nats.SubscriptionOptions;
+  auth?: (nats: Nats.Client, msg: Nats.Msg) => boolean | Promise<boolean>;
 }
 
 /**
@@ -173,7 +178,7 @@ export function SUBJECT(config: SubjectConfig) {
       options: config.options || null,
       validate: config.validate || null,
       dataQuota: config.dataQuota || 1024 * 100,
-      payload: config.payload || Payload.JSON,
+      payload: config.payload || Nats.Payload.JSON,
       auth: config.auth || null
     }
   };
@@ -319,11 +324,11 @@ function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, param
  * Request wrapper for original node incoming message
  * include url and body parsing
  */
-export class Request {
+export class Request<T = any> {
   url: URL;
   method: HttpMehod;
   params: { [key: string]: string };
-  body: any;
+  body: T;
   auth?: any;
   readonly locals: { [key: string]: any } = {};
 
@@ -518,8 +523,8 @@ function createServer() {
  * Validates msg body schema if exists
  * Calls the related method if exists
  */
-async function InitiatlizeNatsSubscriptions(nats: Client) {
-  let subscriptions = new Map<string, Subscription>();
+async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
+  let subscriptions = new Map<string, Nats.Subscription>();
 
   for (let key in serviceSubjects) {
     let subjectConf = serviceSubjects[key];
@@ -740,8 +745,8 @@ export interface SocketIOPublishMessage {
  */
 export class Micro {
   static logger = logger;
-  static nats: Client = null;
-  static subscriptions: Map<string, Subscription>;
+  static nats: Nats.Client = null;
+  static subscriptions: Map<string, Nats.Subscription>;
   static namespaces: Map<string, SocketIO.Server | SocketIO.Namespace>;
 
   static message(msg: string, data: any = null, target: 'all' | 'others' = 'others') {
@@ -819,7 +824,7 @@ export class Micro {
       try {
 
         logger.info('initializing nats server connection');
-        Micro.nats = await connect(serviceConfig.nats);
+        Micro.nats = await Nats.connect(serviceConfig.nats);
         logger.info('connected to nats server successfully');
         Micro.subscriptions = await InitiatlizeNatsSubscriptions(this.nats);
       } catch (error) {
