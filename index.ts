@@ -149,11 +149,11 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  validate?: (data: any) => boolean | Promise<boolean>;
+  validate?: (nats: Client, data: any) => boolean | Promise<boolean>;
   dataQuota?: number;
   payload?: Payload;
   options?: SubscriptionOptions;
-  auth?: (msg: Msg) => boolean | Promise<boolean>;
+  auth?: (nats: Client, msg: Msg) => boolean | Promise<boolean>;
 }
 
 /**
