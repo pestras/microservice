@@ -1,6 +1,6 @@
 {
   "name": "@pestras/microservice",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Nodejs typescript microservice",
   "main": "index.js",
   "types": "index.ts",
@@ -29,13 +29,13 @@
   },
   "homepage": "https://github.com/pestras/microservice#readme",
   "devDependencies": {
-    "@types/node": "^10.17.14",
-    "@types/socket.io": "^2.1.4",
     "typescript": "^3.7.5"
   },
   "dependencies": {
+    "@types/node": "^10.17.14",
+    "@types/socket.io": "^2.1.4",
     "socket.io": "^2.3.0",
     "tools-box": "^0.1.36",
-    "ts-nats": "^1.2.4"
+    "ts-nats": "^1.2.12"
   }
 }

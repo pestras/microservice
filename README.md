@@ -86,6 +86,7 @@ subscription | Map<string, NatsSubscription> | Holds all subsciptions defined in
 namespaces | Map<string, SocketIO.Namespace> | Holds all namesspaces defind in our service
 message | (msg: string, data: WorkerMessage, target: 'all' \| 'others') => void | A helper method to broadcast a message between workers
 publish | (msg: SocketIOPublishMessage) => void | A helper method to organize communication between socketio servers among workers
+request | (options: IFetchOptions) => Promise<{ statusCode: number, data: any }> | For http requests
 
 ## ROUTE DECORATOR
 

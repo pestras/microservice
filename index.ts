@@ -1,5 +1,6 @@
 import * as http from 'http';
 import { URL, PathPattern } from 'tools-box/url';
+import fetch, { IFetchOptions } from 'tools-box/fetch';
 import { CODES } from 'tools-box/fetch/codes';
 import { connect, Client, Subscription, Msg, Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
 import * as SocketIO from 'socket.io';
@@ -747,6 +748,10 @@ export class Micro {
 
   static publish(msg: SocketIOPublishMessage) {
     process.send({ message: 'publish', ...msg });
+  }
+
+  static request(options: IFetchOptions) {
+    return fetch(options);
   }
 
   /**
