@@ -186,11 +186,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-validate | (nats: NatsClient, data: any) => boolean \| Promise\<boolean\> | null | validation method
+validate | (nats: Nats.Client, msg: Nats.Msg) => boolean \| Promise\<boolean\> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | Nats.Payload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | Nats.SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | (nats: NatsClient, msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
+auth | (nats: Nats.Client, msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
@@ -204,12 +204,12 @@ class Email {
 
   @SUBJECT({
     subject: 'user.insert',
-    auth: async function (this: Email, nats: NatsClient, msg: Msg) {
+    auth: async function (this: Email, nats: Nats.Client, msg: Nats.Msg) {
       //  some authorization
     },
     options: { queue: 'emailServiceWorker' }
   })
-  sendActivationEmail(nats: NatsClient, msg: Msg) {
+  sendActivationEmail(nats: Nats.Client, msg: Nats.Msg) {
     let auth = msg.data.auth;
   }
 ```

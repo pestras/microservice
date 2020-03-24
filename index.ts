@@ -149,7 +149,7 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  validate?: (nats: Client, data: any) => boolean | Promise<boolean>;
+  validate?: (nats: Client, msg: Msg) => boolean | Promise<boolean>;
   dataQuota?: number;
   payload?: Payload;
   options?: SubscriptionOptions;
@@ -540,7 +540,7 @@ async function InitiatlizeNatsSubscriptions(nats: Client) {
 
         if (typeof subjectConf.validate === "function") {
           try {
-            let ret = subjectConf.validate.call(service, nats, msg.data);
+            let ret = subjectConf.validate.call(service, nats, msg);
             if (ret) {
               if (typeof (<Promise<any>>ret).then === "function") {
                 let passed = await ret;
