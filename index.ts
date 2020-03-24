@@ -154,11 +154,11 @@ export function ROUTE(config: RouteConfig = {}) {
  */
 export interface SubjectConfig {
   subject: string;
-  validate?: (nats: Nats.Client, msg: Nats.Msg) => boolean | Promise<boolean>;
+  validate?: (nats: Nats.Client, msg: NatsMsg) => boolean | Promise<boolean>;
   dataQuota?: number;
   payload?: Nats.Payload;
   options?: Nats.SubscriptionOptions;
-  auth?: (nats: Nats.Client, msg: Nats.Msg) => boolean | Promise<boolean>;
+  auth?: (nats: Nats.Client, msg: NatsMsg) => boolean | Promise<boolean>;
 }
 
 /**

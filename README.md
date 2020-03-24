@@ -134,11 +134,11 @@ class Article {
   @ROUTE({
     method: 'POST',
     // context is the service instance
-    auth: async function (this: Article, req: Request, res: Response) {
+    auth: async function (this: Article, req: Request<T>, res: Response) {
       //  some authorization
     }
   })
-  insertArticle(req: Request, res: Response) {
+  insertArticle(req: Request<T>, res: Response) {
     let auth = req.auth;
     let article = req.body;
 
@@ -186,11 +186,11 @@ Used to subscribe to nats server pulished subjects, and also accepts a config ob
 Name | Type | Required | Default | Description
 --- | --- | --- | --- | ---
 subject | string | true | - | Nats server subject pattern
-validate | (nats: Nats.Client, msg: Nats.Msg) => boolean \| Promise\<boolean\> | null | validation method
+validate | (nats: Nats.Client, msg: NatsMsg<T>) => boolean \| Promise\<boolean\> | null | validation method
 dataQuota | number | false | 1024 * 100 | Subject msg data size limit
 payload | Nats.Payload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
 options | Nats.SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
-auth | (nats: Nats.Client, msg: Nats.Msg) => boolean \| Promise\<boolean\> | false | null | auth method
+auth | (nats: Nats.Client, msg: NatsMsg<T>) => boolean \| Promise\<boolean\> | false | null | auth method
 
 ```ts
 import { SERVICE, SUBJECT } from '@pestras/microservice';
