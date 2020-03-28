@@ -292,7 +292,7 @@ export function EVENT(name?: string, namespaces: string[] = ["default"]) {
  * accepts list of namespaces names
  * @param namespaces 
  */
-export function DISCONNET(namespaces: string[] = ['default']) {
+export function DISCONNECT(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
       serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
@@ -785,7 +785,10 @@ export class Micro {
    * @param ServiceClass 
    */
   static async start(ServiceClass: any) {
-    if (cluster.isMaster && !!serviceConfig.workers) return new WorkersManager(logger, serviceConfig.workers);
+    if (cluster.isMaster && !!serviceConfig.workers) {
+      new WorkersManager(logger, serviceConfig.workers);
+      return;
+    }
 
     service = new ServiceClass();
     logger.level = serviceConfig.logLevel;
