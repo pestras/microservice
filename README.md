@@ -19,7 +19,8 @@ class Test {}
 Name        | Type     | Defualt         | Description
 ----        | -----    | ------          | -----
 version     | number   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
-port        | number   | 3888            | Http server listening port.   
+port        | number   | 3000            | Http server listening port.   
+host        | string   | 0.0.0.0         | Http server host.
 workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
 logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
 tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **log** method
@@ -36,26 +37,6 @@ authTimeout | number | 15000 | auth method timeout
 - LOGLEVEL.WARN
 - LOGLEVEL.INFO
 - LOGLEVEL.DEBUG
-
-**PMS** has a built in lightweight logger that logs everything to the console.
-
-In order to change that behavior we can define a log method in our service and **PMS** will detect that method and will transfer all logs to it, besides to setting the **transferLog**
-options in service config to true
-
-```ts
-import { SERVICE } from '@pestras/microservice';
-
-@SERVICE({
-  version: 1
-  transferLog: process.env.NODE_ENV === 'production'
-})
-class Test {
-
-  log(level: LOGLEVEL, msg: any, extra: any) {
-
-  }
-}
-```
 
 ### SocketIOOptions
 
@@ -281,7 +262,6 @@ class Publisher {
   }
 }
 ```
-*Note: Auth method should return or resolve to null when passed, returned or resolved value is consedered as failure*
 
 ## USE DECORATOE
 
@@ -455,9 +435,7 @@ worker to start listening and then will restart the next one.
 
 **PMS** will try to call some service methods in specific time or action if they were already defined in our service.
 
-## Lifecycle Methods
-
-### onInit
+## onInit
 
 When defined, will be called once our service is instantiated but nothing else, this method is useful when
 we need to connect to a databese or to make some async operations before start listening one events or http requests.
@@ -505,11 +483,38 @@ class Publisher {
 }
 ```
 
-## Events Methods
+## OnLog
 
-Events methods will be called when some specific actions happens..
+**PMS** has a built in lightweight logger that logs everything to the console.
 
-### onRequest
+In order to change that behavior we can define **onLog** hook method in our service and **PMS** will detect that method and will transfer all logs to it, besides enabling **transferLog**
+options in service config.
+
+```ts
+import { SERVICE, SUBJECT, Micro } from '@pestras/microservice';
+
+@SERVICE({
+  version: 1
+  transferLog: process.env.NODE_ENV === 'production'
+})
+class Test {
+
+  @SUBJECT({ subject: 'newArticle' })
+  newArticle() {
+    try {
+
+    } catch (e) {
+      Micro.logger.error('some error', e);
+    }
+  }
+
+  onLog(level: LOGLEVEL, msg: any, extra: any) {
+    // what ever you want
+  }
+}
+```
+
+## onRequest
 
 Called whenever a new http request is received, passing the Request and Response instances as arguments, it can return a promise or nothing;
 
@@ -523,7 +528,7 @@ class Publisher {
 
 This event method is called before authorizing the request or even before checking if there is a matched route or not.
 
-### on404
+## on404
 
 Called whenever http request has no route handler found.
 
@@ -539,7 +544,7 @@ class Publisher {
 
 When implemented response should be implemented as well
 
-### onError
+## onError
 
 Called whenever an error accured when handling an http request, passing the Request and Response instances and the error as arguments.
 
@@ -551,7 +556,7 @@ class Publisher {
 }
 ```
 
-### onUnhandledRejection
+## onUnhandledRejection
 
 I think it is clear by only reading the name.
 
@@ -563,7 +568,7 @@ class Publisher {
 }
 ```
 
-### onUnhandledException
+## onUnhandledException
 
 Also clear.
 

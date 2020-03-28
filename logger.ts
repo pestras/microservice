@@ -51,7 +51,7 @@ export class Logger {
   private context: any = this;
   level = LOGLEVEL.ERROR;
 
-  implements(logger: any) {
+  transferTo(logger: any) {
     this.context = logger;
   }
 
@@ -60,7 +60,7 @@ export class Logger {
     return data;
   }
 
-  log(mode: LOGLEVEL, msg: any, meta?: any) {
+  onLog(mode: LOGLEVEL, msg: any, meta?: any) {
     let color = (<any>COLOR)[LOGLEVEL[mode]];
     console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, msg, new Date().toTimeString());
     !!meta && console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, this.stringify(meta), new Date().toTimeString());
@@ -68,18 +68,18 @@ export class Logger {
   }
 
   debug(msg: any, meta?: any) {
-    (LOGLEVEL.DEBUG <= this.level) && (<Logger>this.context).log(LOGLEVEL.DEBUG, msg, meta);
+    (LOGLEVEL.DEBUG <= this.level) && (<Logger>this.context).onLog(LOGLEVEL.DEBUG, msg, meta);
   }
 
   info(msg: any, meta?: any) {
-    (LOGLEVEL.INFO <= this.level) && (<Logger>this.context).log(LOGLEVEL.INFO, msg, meta);
+    (LOGLEVEL.INFO <= this.level) && (<Logger>this.context).onLog(LOGLEVEL.INFO, msg, meta);
   }
 
   warn(msg: any, meta?: any) {
-    (LOGLEVEL.WARN <= this.level) && (<Logger>this.context).log(LOGLEVEL.WARN, msg, meta);
+    (LOGLEVEL.WARN <= this.level) && (<Logger>this.context).onLog(LOGLEVEL.WARN, msg, meta);
   }
 
   error(msg: any, meta?: any) {
-    (LOGLEVEL.ERROR <= this.level) && (<Logger>this.context).log(LOGLEVEL.ERROR, msg, meta);
+    (LOGLEVEL.ERROR <= this.level) && (<Logger>this.context).onLog(LOGLEVEL.ERROR, msg, meta);
   }
 }

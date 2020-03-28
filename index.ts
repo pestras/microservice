@@ -2,7 +2,6 @@ import * as http from 'http';
 import { URL, PathPattern } from 'tools-box/url';
 import fetch, { IFetchOptions } from 'tools-box/fetch';
 import { CODES } from 'tools-box/fetch/codes';
-// import { connect, Client, Subscription, Msg, Payload, NatsConnectionOptions, SubscriptionOptions } from 'ts-nats';
 import * as Nats from 'ts-nats';
 import * as SocketIO from 'socket.io';
 import * as cluster from 'cluster';
@@ -10,14 +9,13 @@ import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
 
 export interface NatsMsg<T = any> extends Nats.Msg {
-  data: T;
+  data?: T;
 }
 
 /**
  * Service Interface
  */
 interface Service {
-  log: (mode: LOGLEVEL, msg: any, meta: any) => void;
   [key: string]: any;
 }
 
@@ -51,6 +49,7 @@ export interface SocketIOOptions {
 export interface ServiceConfig {
   version?: number;
   port?: number;
+  host?: string;
   workers?: number;
   logLevel?: LOGLEVEL;
   transferLog?: boolean;
@@ -87,7 +86,8 @@ export function SERVICE(config: ServiceConfig = {}) {
       logLevel: config.logLevel || LOGLEVEL.INFO,
       transferLog: !!config.transferLog,
       exitOnUnhandledException: config.exitOnUnhandledException === undefined ? true : !!config.exitOnUnhandledException,
-      port: config.port || 3888,
+      port: config.port || 3000,
+      host: config.host || '0.0.0.0',
       nats: config.nats,
       socket: config.socket,
       authTimeout: config.authTimeout > 0 ? config.authTimeout : 15000
@@ -735,6 +735,18 @@ export interface SocketIOPublishMessage {
   broadcast?: boolean;
 }
 
+export interface Hooks {
+  onLog?: (level: LOGLEVEL, msg: string, meta: any) => void;
+  onInit?: () => void | Promise<void>;
+  onReady?: () => void;
+  onDestroy?: () => void;
+  onRequest?: (req: Request, res: Response) => void | Promise<void>;
+  on404?: (req: Request, res: Response) => void;
+  onError?: (req: Request, res: Response, err: any) => void;
+  onUnhandledRejection?: (reason: any, p: Promise<any>) => void;
+  onUnhandledException?: (err: any) => void;
+}
+
 
 /**
  * export Micro Class with:
@@ -779,7 +791,7 @@ export class Micro {
     logger.level = serviceConfig.logLevel;
 
     if (typeof service.log === 'function' && serviceConfig.transferLog)
-      logger.implements(service);
+      logger.transferTo(service);
 
     if (typeof service.onInit === "function") {
       let promise: Promise<any> = service.init();
@@ -841,6 +853,6 @@ export class Micro {
     process.on('SIGHUP', (signal) => destory(signal));
     process.on('SIGINT', (signal) => destory(signal));
 
-    server.listen(serviceConfig.port, () => logger.info(`running http server on port: ${serviceConfig.port}, pid: ${process.pid}`));
+    server.listen(serviceConfig.port, serviceConfig.host, () => logger.info(`running http server on port: ${serviceConfig.port}, pid: ${process.pid}`));
   }
 }
