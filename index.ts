@@ -135,7 +135,7 @@ export interface Routes {
 /**
  * Routes repo object that will hold all defined routes
  */
-let serviceRoutes: Routes = {};
+let serviceRoutes: Routes = { GET: { hc: { path: 'hc', name: 'healtcheck', method: 'GET' } }};
 let serviceRoutesRepo: (RouteConfig & { key: string })[] = [];
 
 /**
@@ -443,6 +443,9 @@ function createServer() {
           if (typeof service.on404 === "function") return service.on404(request, response);
           return response.status(CODES.NOT_FOUND).end();
         }
+
+        if (route.path === 'hc' && request.method === 'GET')
+          return response.status(200).end();
 
         timer = setTimeout(() => {
           response.status(CODES.REQUEST_TIMEOUT).end('request time out');

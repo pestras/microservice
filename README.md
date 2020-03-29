@@ -580,4 +580,14 @@ class Publisher {
 }
 ```
 
+# Health Check
+
+For health check just run the following command
+
+```
+$ node ./node_modules/@pestras/microservice/hc 3000
+```
+
+Port defaults to 3000 it is optional.
+
 Thank you
