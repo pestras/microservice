@@ -725,10 +725,12 @@ async function createSocketIO() {
  * close nats server connetion
  * call service onExit hook if exists
  */
-function destory(signal: NodeJS.Signals) {
-  logger.warn(`service exited with signal: ${signal}`);
+function exit(signal: NodeJS.Signals) {
+  logger.warn(`cleaning up before exit`);
+  server.close();
   !!Micro.nats && Micro.nats.close();
   if (typeof service.onExit === 'function') service.onExit(signal);
+  logger.warn(`service exited with signal: ${signal}`);
   process.exit(0);
 }
 
@@ -879,9 +881,9 @@ export class Micro {
 
     if (typeof service.onReady === 'function') service.onReady();
 
-    process.on('SIGTERM', (signal) => destory(signal));
-    process.on('SIGHUP', (signal) => destory(signal));
-    process.on('SIGINT', (signal) => destory(signal));
+    process.on('SIGTERM', (signal) => exit(signal));
+    process.on('SIGHUP', (signal) => exit(signal));
+    process.on('SIGINT', (signal) => exit(signal));
 
     server.listen(serviceConfig.port, serviceConfig.host, () => logger.info(`running http server on port: ${serviceConfig.port}, pid: ${process.pid}`));
   }
