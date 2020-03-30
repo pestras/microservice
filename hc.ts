@@ -4,7 +4,7 @@ let options = {
   timeout: 2000,
   port: process.argv[2] || 3000,
   host: 'localhost',
-  path: '/hc'
+  path: '/healthcheck'
 };
 
 const req = request(options, res => {

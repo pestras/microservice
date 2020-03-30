@@ -135,7 +135,13 @@ export interface Routes {
 /**
  * Routes repo object that will hold all defined routes
  */
-let serviceRoutes: Routes = { GET: { hc: { path: 'hc', name: 'healtcheck', method: 'GET' } }};
+let serviceRoutes: Routes = {
+  GET: { 
+    healtcheck: { path: 'healtcheck', name: 'healtcheck', method: 'GET' },
+    readiness: { path: 'readiness', name: 'readiness', method: 'GET' },
+    liveness: { path: 'liveness', name: 'liveness', method: 'GET' }
+  }
+};
 let serviceRoutesRepo: (RouteConfig & { key: string })[] = [];
 
 /**
@@ -444,8 +450,23 @@ function createServer() {
           return response.status(CODES.NOT_FOUND).end();
         }
 
-        if (route.path === 'hc' && request.method === 'GET')
-          return response.status(200).end();
+        // healthcheck event
+        if (route.name === 'healthcheck' && request.method === 'GET') {
+          if (typeof service.onHealthcheck === "function") return service.onHealthcheck(response);
+          else return response.status(200).end();
+        }
+
+        // readiness event
+        if (route.name === 'readiness' && request.method === 'GET') {
+          if (typeof service.onReadycheck === "function") return service.onReadycheck(response);
+          else return response.status(200).end();
+        }
+
+        // liveness event
+        if (route.name === 'liveness' && request.method === 'GET') {
+          if (typeof service.onLivecheck === "function") return service.onLivecheck(response);
+          else return response.status(200).end();
+        }
 
         timer = setTimeout(() => {
           response.status(CODES.REQUEST_TIMEOUT).end('request time out');
@@ -702,12 +723,12 @@ async function createSocketIO() {
 /**
  * called when when service exits
  * close nats server connetion
- * call service onDestroy hook if exists
+ * call service onExit hook if exists
  */
 function destory(signal: NodeJS.Signals) {
   logger.warn(`service exited with signal: ${signal}`);
   !!Micro.nats && Micro.nats.close();
-  if (typeof service.onDestroy === 'function') service.onDestroy(signal);
+  if (typeof service.onExit === 'function') service.onExit(signal);
   process.exit(0);
 }
 
@@ -742,12 +763,15 @@ export interface Hooks {
   onLog?: (level: LOGLEVEL, msg: string, meta: any) => void;
   onInit?: () => void | Promise<void>;
   onReady?: () => void;
-  onDestroy?: () => void;
+  onExit?: () => void;
   onRequest?: (req: Request, res: Response) => void | Promise<void>;
   on404?: (req: Request, res: Response) => void;
   onError?: (req: Request, res: Response, err: any) => void;
   onUnhandledRejection?: (reason: any, p: Promise<any>) => void;
   onUnhandledException?: (err: any) => void;
+  onHealthcheck?: (res: Response) => void;
+  onReadycheck?: (res: Response) => void;
+  onLivecheck?: (res: Response) => void;
 }
 
 

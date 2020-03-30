@@ -469,7 +469,7 @@ class Publisher {
 }
 ```
 
-## onDestory
+## onExit
 
 Called once our service is stopped for any reason, and the exit signal is passed as an argument.
 
@@ -477,7 +477,7 @@ Called once our service is stopped for any reason, and the exit signal is passed
 @SERVICE()
 class Publisher {
 
-  onDestory(signal: NodeJS.Signals) {
+  onExit(signal: NodeJS.Signals) {
     // disconnecting from the databese
   }
 }
@@ -510,6 +510,54 @@ class Test {
 
   onLog(level: LOGLEVEL, msg: any, extra: any) {
     // what ever you want
+  }
+}
+```
+
+## onHealthcheck
+
+An event triggered for docker swarm healthcheck.
+
+```ts
+@SERVICE()
+class Publisher {
+
+  async onHealthcheck(res: Response) {
+    // check for database connection
+    if (dbConnected) res.status(200).end();
+    else res.status(500).end()
+  }
+}
+```
+
+## onReadycheck
+
+An event triggered for kubernetes ready check.
+
+```ts
+@SERVICE()
+class Publisher {
+
+  async onReadycheck(res: Response) {
+    // check for database connection
+    if (dbConnected) res.status(200).end();
+    else res.status(500).end()
+  }
+}
+```
+
+## onLivecheck
+
+An event triggered for kubernetes live check.
+
+```ts
+@SERVICE()
+class Publisher {
+
+  async onLivecheck(res: Response) {
+    // check for database connection
+    if (dbConnected) res.status(200).end();
+    else res.status(500).end()
   }
 }
 ```
@@ -582,10 +630,19 @@ class Publisher {
 
 # Health Check
 
-For health check just run the following command
+For health check in Dockerfile and docker-compose
 
+```Dockerfile
+HEALTHCHECK --interval=30s CMD node ./node_modules/@pestras/microservice/hc.js 3000
 ```
-$ node ./node_modules/@pestras/microservice/hc 3000
+
+```yml
+healthcheck:
+  test: ["CMD", "node", "./node_modules/@pestras/microservice/hc.js", "3000"]
+  interval: 1m30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
 ```
 
 Port defaults to 3000 it is optional.
