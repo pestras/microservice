@@ -73,6 +73,7 @@ namespaces | Map<string, SocketIO.Namespace> | Holds all namesspaces defind in o
 message | (msg: string, data: WorkerMessage, target: 'all' \| 'others') => void | A helper method to broadcast a message between workers
 publish | (msg: SocketIOPublishMessage) => void | A helper method to organize communication between socketio servers among workers
 request | (options: IFetchOptions) => Promise<{ statusCode: number, data: any }> | For http requests
+attempt | (action: (curr: number) => Promise, options: AttemptOptions) | Multiple calls for promise helper function
 
 ## ROUTE DECORATOR
 
@@ -431,6 +432,54 @@ class Publisher {
 When restarting all workers, it is going to be one by one process, **PMS** is going to wait for the new
 worker to start listening and then will restart the next one.
 
+# Attempt helper
+
+When multiple attempts on failure to reach the database for example **attempt** method whould be the right thing to use
+
+```ts
+@SERVICE()
+class Article {
+  
+  @ROUTE()
+  async getArticles(req, res) {
+    try {
+      // find articles will be called 3 times, with 5 sec waiting on each failure
+      let articles = await Micro.attampt(
+        (curr: number) => articles.find({ ... }),
+        { tries: 3, interval: 5000 }
+      );
+    } catch (e) {
+      // after all attempts failed
+    }
+  }
+}
+```
+
+**attempt** can have a canceler if we want to set timeout for each request
+
+```ts
+@SERVICE()
+class Article {
+  
+  @ROUTE()
+  async getArticles(req, res) {
+    try {
+      // find articles will be called 3 times, with 5 sec waiting on each failure or cancel on timeout
+      let articles = await Micro.attampt(
+        (curr: number) => articles.find({ ... }),
+        (promise) => {
+          // terminate promise some how
+        },
+        // setting timeout option
+        { tries: 3, interval: 5000, timeout: 5000 }
+      );
+    } catch (e) {
+      // after all attempts failed or canceled on timeout
+    }
+  }
+}
+```
+
 # Lifecycle & Events Methods
 
 **PMS** will try to call some service methods in specific time or action if they were already defined in our service.
@@ -522,6 +571,7 @@ An event triggered for docker swarm healthcheck.
 @SERVICE()
 class Publisher {
 
+  // http: GET /healthcheck
   async onHealthcheck(res: Response) {
     // check for database connection
     if (dbConnected) res.status(200).end();
@@ -538,6 +588,7 @@ An event triggered for kubernetes ready check.
 @SERVICE()
 class Publisher {
 
+  // http: GET /readiness
   async onReadycheck(res: Response) {
     // check for database connection
     if (dbConnected) res.status(200).end();
@@ -554,6 +605,7 @@ An event triggered for kubernetes live check.
 @SERVICE()
 class Publisher {
 
+  // http: GET /liveness
   async onLivecheck(res: Response) {
     // check for database connection
     if (dbConnected) res.status(200).end();

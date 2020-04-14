@@ -136,8 +136,8 @@ export interface Routes {
  * Routes repo object that will hold all defined routes
  */
 let serviceRoutes: Routes = {
-  GET: { 
-    healtcheck: { path: 'healtcheck', name: 'healtcheck', method: 'GET' },
+  GET: {
+    healthcheck: { path: 'healthcheck', name: 'healthcheck', method: 'GET' },
     readiness: { path: 'readiness', name: 'readiness', method: 'GET' },
     liveness: { path: 'liveness', name: 'liveness', method: 'GET' }
   }
@@ -521,7 +521,6 @@ function createServer() {
           }
         }
 
-
         try {
           service[route.key](request, response);
         } catch (e) {
@@ -776,6 +775,11 @@ export interface Hooks {
   onLivecheck?: (res: Response) => void;
 }
 
+export interface AttemptOptions {
+  tries?: number;
+  interval?: number;
+  timeout?: number;
+}
 
 /**
  * export Micro Class with:
@@ -800,6 +804,53 @@ export class Micro {
 
   static request(options: IFetchOptions) {
     return fetch(options);
+  }
+
+  /**
+   * helper method to 
+   * @param action (curr: number) => Promise<T>
+   * @param options AttemptOptions
+   */
+  static attempt<T>(action: (curr: number) => Promise<T>, options: AttemptOptions): Promise<T>
+  static attempt<T>(action: (curr: number) => Promise<T>, canceler: ((promise: Promise<T>) => void), options: AttemptOptions): Promise<T>
+  static attempt<T>(action: (curr: number) => Promise<T>, canceler: ((promise: Promise<T>) => void) | AttemptOptions = {}, options: AttemptOptions = {}): Promise<T> {
+    options = typeof canceler === "function" ? options : canceler;
+    canceler = typeof canceler === "function" ? canceler : null;
+    let curr = 0;
+    let interval = options.interval || 10000;
+    let tryies = options.tries || 3;
+    let timeout = options.timeout || 10000;
+    let timerId: NodeJS.Timeout;
+
+    return new Promise((res, rej) => {
+
+      function trigger() {
+        let prom = action(++curr);
+
+        prom
+          .then(data => {
+            clearTimeout(timerId);
+            res(data);
+          })
+          .catch(e => {
+            clearTimeout(timerId);
+            Micro.logger.warn(`attempt [${curr}]: faild`, e);
+            if (curr >= tryies) rej(e);
+            else setTimeout(() => trigger(), interval);
+          });
+
+        if (canceler)
+          timerId = setTimeout(() => {
+            clearTimeout(timerId);
+            Micro.logger.warn(`attempt [${curr}]: timeout`);
+            (<any>canceler)(prom);
+            if (curr >= tryies) rej({ msg: 'timeout' });
+            else setTimeout(() => trigger(), interval);
+          }, timeout);
+      }
+
+      trigger();
+    });
   }
 
   /**
