@@ -181,7 +181,7 @@ export function SUBJECT(config: SubjectConfig) {
   return (target: any, key: string) => {
     serviceSubjects[key] = <SubjectConfig>{
       subject: config.subject,
-      options: config.options || null,
+      options: config.options || {},
       validate: config.validate || null,
       dataQuota: config.dataQuota || 1024 * 100,
       payload: config.payload || Nats.Payload.JSON,
