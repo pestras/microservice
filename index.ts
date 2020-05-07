@@ -42,6 +42,7 @@ const processMsgsListners: ProcessMsgsListeners = {};
 export interface SocketIOOptions {
   serverOptions?: SocketIO.ServerOptions;
   maxListeners?: number;
+  adapter?: any;
 }
 
 /**
@@ -705,6 +706,7 @@ async function createSocketIO() {
   logger.info('initializing socketIO server');
   let ioOptions = Object.assign({ origin: '*:*' }, serviceConfig.socket ? serviceConfig.socket.serverOptions || {} : {});
   let io = SocketIO(server, ioOptions);
+  if (serviceConfig.socket && serviceConfig.socket.adapter) io.adapter(serviceConfig.socket.adapter);
   io.sockets.setMaxListeners(serviceConfig.socket ? serviceConfig.socket.maxListeners || 10 : 10);
   let namespaces = new Map<string, SocketIO.Server | SocketIO.Namespace>();
 

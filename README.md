@@ -44,6 +44,7 @@ Name | Type | default | Description
 --- | --- | --- | ---
 serverOptions | SocketIO.ServerOptions | null | see [socket.io docs](https://socket.io/docs/server-api/)
 maxListeners  | number  | 10 |
+adapter | any | null | SocketIO Adapter
 
 ## Micro
 
@@ -230,7 +231,7 @@ but we need to inform typescript by defining the type of 'this' to the service c
 
 # SocketIO
 
-**PMS** provides us with several decoratoes to manage our SocketIO server.
+**PMS** provides several decorators to manage our SocketIO server.
 
 ## CONNECT DECORATOR
 
@@ -410,12 +411,12 @@ class Publisher {
 }
 ```
 
-**PMS** provide us another helper method to manage communications between workers for handling socket io broadcasting using *Micro.publish* method which accepts SocketIOPublishMessage object.
+In case of not usong a socket io adapter, **PMS** provide another helper method to manage communications between workers for handling socket io broadcasting using *Micro.publish* method which accepts SocketIOPublishMessage object.
 
 Name | Type | Required | Default | Description
 --- | --- | ---- | --- | ---
 event | string | true | - | Event name that needs to be published
-data | any[] | true | - | event payload array distructed on multipe arguments
+data | any[] | true | - | event payload array distributed on multipe arguments
 namespace | string | false | 'default' | If we need to publish through a specific namespace
 room | string | false | null | If we need to publish to a specific room
 socketId | string | false | null | In case we need to send to specific socket or exclude it from the receivers
@@ -430,9 +431,10 @@ class Publisher {
   @EVENT('ArticleUpdated', ['blog'])
   onArticleUpdate(ns: SocketIO.Namespace, socket: SocketIO.Socket, id: string) {
     socket.to('members').emit('ArticleUpdated', id);
+    // publish to other worker socket io
     Micro.publish({
       event: 'ArticleUpdated',
-      data: id,
+      data: [id],
       namespace: 'blog',
       room: 'members'
     });
