@@ -1,12 +1,13 @@
 import * as http from 'http';
-import { URL, PathPattern } from 'tools-box/url';
-import fetch, { IFetchOptions } from 'tools-box/fetch';
-import { CODES } from 'tools-box/fetch/codes';
 import * as Nats from 'ts-nats';
 import * as SocketIO from 'socket.io';
 import * as cluster from 'cluster';
 import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
+import { URL } from '@pestras/toolbox/url';
+import { PathPattern } from '@pestras/toolbox/url/path-pattern';
+import fetch, { IFetchOptions } from '@pestras/toolbox/fetch';
+import { CODES } from '@pestras/toolbox/fetch/codes';
 
 export interface NatsMsg<T = any> extends Nats.Msg {
   data?: T;

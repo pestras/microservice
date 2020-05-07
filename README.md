@@ -84,7 +84,7 @@ Used to define a route for a rest service.
 Name | type | Default | Description
 --- | --- | --- | --- 
 name | string | Method name applied to | name of the route
-path | string | '' | Service path pattern very similar to express route path
+path | string | '' | Service path pattern
 method | HttpMethod | 'GET' | 
 requestType | string | 'application/json | Same as 'Content-Type' header
 validate | (req: Request, res: Response) => boolean \| Promise\<boolean\> | null | validation method
@@ -100,10 +100,11 @@ import { SERVICE, ROUTE } from '@pestras/microservice';
   version: 1,
   port: 3333
 })
-class Article {
+class Articles {
 
   @ROUTE({
-    path: '/:id'
+    // /articles/v1/{id}
+    path: '/{id}'
   })
   getArticle(req: Request, res: Response) {
     let id = req.params.id;
@@ -118,6 +119,7 @@ class Article {
     // context is the service instance
     auth: async function (this: Article, req: Request<T>, res: Response) {
       //  some authorization
+      // return false to end request
     }
   })
   insertArticle(req: Request<T>, res: Response) {
@@ -160,6 +162,33 @@ end | any | Overwrites orignal end method *recommended to use*
 http | NodeJS.ServerResponse | 
 
 **Response** will log any 500 family errors automatically.
+
+### Request Path Patterns
+
+**PM** path patterns are very useful that helps match specific cases
+
+1. **/articles/{id}** - *id* is a param name that match any value: */articles/4384545*, */articles/45geeFEe8 but not */articles* or /articles/dsfge03tG9/1
+
+2. **/articles/{id}?** - same the previous one but id params is optional, so */articles* is acceptable.
+
+3. **/articles/{cat}/{start}?/{limit}?** - cat params is required, however start and limit are optionals,
+*/articles/scifi*, */articles/scifi/0*, */articles/scifi/0/10* all matched
+
+4. **/articles/{id:^[0-9]{10}$}** - id param is constrained with a regex that allow only number value with 10 digits length only.
+
+5. **/articles/*** - this route has rest operator which holds the value of the rest of the path,
+*articles/scifi/0/10 does match and **request.params['\*']** equals 'scifi/0/10', however */articles* does not match
+
+6. **/articles/*?** - same as the previous however */articles* does match
+
+#### notes:
+
+- Rest operator accepts preceding parameter but not optional parameters.
+- Adding flags to regexp would be */articles/{id:^\w{10}$**:i**}*.
+- Parameters with Regexp can be optional as will */articles/{id:^\w{10}$**:i**}?*
+- Parameters can be seperated by fixed value blocks */articles/{aid}/comments/{cid}*
+- Parameters and rest operator can be seperated by fixed value blocks as well.
+
 
 ## SUBJECT DECORATOR
 
