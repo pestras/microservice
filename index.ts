@@ -8,6 +8,7 @@ import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
 import fetch, { IFetchOptions } from '@pestras/toolbox/fetch';
 import { CODES } from '@pestras/toolbox/fetch/codes';
+import { IncomingHttpHeaders } from 'http2';
 
 export interface NatsMsg<T = any> extends Nats.Msg {
   data?: T;
@@ -59,14 +60,21 @@ export interface ServiceConfig {
   exitOnUnhandledException?: boolean;
   socket?: SocketIOOptions;
   authTimeout?: number;
+  cors?: IncomingHttpHeaders & { 'success-code'?: string };
 }
 
 /**
  * Service Config Object
  */
 let serviceConfig: ServiceConfig & { name: string };
+const defaultCors: IncomingHttpHeaders & { 'success-code'?: string } = {
+  'access-control-allow-methods': "GET,HEAD,PUT,PATCH,POST,DELETE",
+  'access-control-allow-origin': "*",
+  'Access-Control-Allow-Credentials': 'false',
+  'success-code': '204'
+}
 
-export type HttpMehod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
+export type HttpMehod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface IRedisOptions {
   host: string;
@@ -81,6 +89,7 @@ export interface IRedisOptions {
  */
 export function SERVICE(config: ServiceConfig = {}) {
   return (constructor: any) => {
+    let cors = Object.assign({}, defaultCors);
     serviceConfig = {
       name: constructor.name.toLowerCase(),
       version: config.version || 0,
@@ -92,7 +101,8 @@ export function SERVICE(config: ServiceConfig = {}) {
       host: config.host || '0.0.0.0',
       nats: config.nats,
       socket: config.socket,
-      authTimeout: config.authTimeout > 0 ? config.authTimeout : 15000
+      authTimeout: config.authTimeout > 0 ? config.authTimeout : 15000,
+      cors: Object.assign(cors, config.cors || {})
     }
   }
 }
@@ -110,7 +120,8 @@ export interface RouteConfig {
   name?: string;
   path?: string;
   method?: HttpMehod;
-  requestType?: string;
+  /** default: application/json; charset=utf-8 */
+  accepts?: string;
   validate?: (request: Request, response: Response) => boolean | Promise<boolean>;
   bodyQuota?: number;
   queryLength?: number;
@@ -131,7 +142,6 @@ export interface Routes {
   PUT?: { [key: string]: RouteFullConfig };
   PATCH?: { [key: string]: RouteFullConfig };
   DELETE?: { [key: string]: RouteFullConfig };
-  OPTIONS?: { [key: string]: RouteFullConfig };
 }
 
 /**
@@ -345,7 +355,9 @@ export class Request<T = any> {
     this.method = <HttpMehod>this.http.method.toUpperCase();
   }
 
-  get(key: string) { return this.http.headers[key]; }
+  header(key: string) { return this.http.headers[key]; }
+
+  get headers() { return this.http.headers; }
 }
 
 /**
@@ -356,12 +368,12 @@ function createRequest(http: http.IncomingMessage): Promise<Request> {
   let request = new Request(http);
 
   return new Promise((res, rej) => {
-    if (['post', 'put', 'patch', 'delete'].indexOf(request.method.toLowerCase()) > -1) {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
       let payload: Uint8Array[] = [];
       request.http.on("data", data => {
         payload.push(data);
       }).on('end', () => {
-        request.body = JSON.parse(Buffer.concat(payload).toString());
+        request.body = Buffer.concat(payload).toString();
         res(request);
       }).on("error", err => {
         logger.error(err, { request });
@@ -377,24 +389,47 @@ function createRequest(http: http.IncomingMessage): Promise<Request> {
  * Response wrapper over origin http.ServerResponse
  */
 export class Response {
-  private ended: boolean;
+  private _ended: boolean;
 
   constructor(private request: Request, public http: http.ServerResponse) {
+    this.http.setHeader('Cache-Control', 'no-cache,no-store,max-age=0,must-revalidate');
+    this.http.setHeader('Pragma', 'no-cache');
+    this.http.setHeader('Expires', '-1');
+    this.http.setHeader('X-XSS-Protection', '1;mode=block');
+    this.http.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    this.http.setHeader('Content-Security-Policy', "script-src 'self'");
+    this.http.setHeader('X-Content-Type-Options', 'nosniff');
   }
+
+  get ended() { return this._ended; }
 
   end(cb?: () => void): void;
   end(chunck: any, cb?: () => void): void;
   end(chunck: any, encoding: string, cb?: () => void): void;
   end(chunck?: any | (() => void), encoding?: string | (() => void), cb?: () => void) {
+    if (this._ended) return logger.warn('http response already sent');
     let mode: LOGLEVEL = this.http.statusCode < 500 ? LOGLEVEL.INFO : LOGLEVEL.ERROR;
     if (this.http.statusCode < 500) logger.info(`response ${this.http.statusCode} ${this.request.url.pathname}`);
     else logger.error(`response ${this.http.statusCode} ${this.request.url}`);
-    if (this.ended) return;
-    this.ended = true;
+    this._ended = true;
     this.http.end(...arguments);
   }
 
+  type(type: string) {
+    this.http.setHeader('Content-Type', type);
+    return this;
+  }
+
+  setHeaders(headers: { [key: string]: string | string[] | number }) {
+    if (headers)
+      for (let key in headers)
+        this.http.setHeader(key, headers[key]);
+
+    return this;
+  }
+
   json(data?: any) {
+    this.http.setHeader('Content-Type', 'application/json; charset=utf-8');
     if (data && (Array.isArray(data) || typeof data === "object")) this.end(JSON.stringify(data));
     else this.end(data);
   }
@@ -427,6 +462,8 @@ function createServer() {
         clearTimeout(timer)
       });
 
+      logger.debug(request.headers);
+
       logger.info(`${request.method} ${request.url.pathname}`);
       logger.debug('body:')
       logger.debug(request.body);
@@ -435,6 +472,11 @@ function createServer() {
         logger.error(err, { method: request.method });
         if (typeof service.onError === "function") service.onError(request, response, err);
       });
+
+      if (<any>request.method === 'OPTIONS') {
+        response.setHeaders(serviceConfig.cors);
+        return response.status(+serviceConfig.cors['success-code']).end();
+      }
 
       if (typeof service.onRequest === "function") {
         let ret = service.onRequest(request, response);
@@ -480,6 +522,12 @@ function createServer() {
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
+          if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1) return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+          if (route.accepts.indexOf('application/json') > -1) request.body = JSON.parse(request.body);
+          if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1) request.body = URL.QueryToObject(request.body);
+        }
+
         if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
@@ -489,9 +537,15 @@ function createServer() {
             if (ret) {
               if (typeof (<Promise<boolean>>ret).then === "function") {
                 let passed = await ret;
-                if (!passed) return;
+                if (!passed) {
+                  if (!response.ended) response.status(CODES.BAD_REQUEST).json({ msg: 'invalidInput' });
+                  return;
+                }
               }
-            } else return;
+            } else {
+              if (!response.ended) response.status(CODES.BAD_REQUEST).json({ msg: 'invalidInput' });
+              return;
+            }
           } catch (err) {
             logger.error(err, { route: route.name });
             return response.status(CODES.UNKNOWN_ERROR).json(err);
@@ -903,7 +957,7 @@ export class Micro {
         path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + (config.path || '')),
         name: config.name || config.key,
         method: config.method || 'GET',
-        requestType: config.requestType || 'application/json',
+        accepts: config.accepts || 'application/json; charset=utf-8',
         validate: config.validate || null,
         bodyQuota: config.bodyQuota || 1024 * 100,
         queryLength: config.queryLength || 100,

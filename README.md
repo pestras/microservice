@@ -28,6 +28,7 @@ nats        | string \| number \| NatsConnectionOptions | null        | see [Nat
 exitOnUnhandledException | boolean | true |
 socket | SocketIOOptions | null |
 authTimeout | number | 15000 | auth method timeout
+cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
 
 #### LOGLEVEL Enum
 
@@ -45,6 +46,30 @@ Name | Type | default | Description
 serverOptions | SocketIO.ServerOptions | null | see [socket.io docs](https://socket.io/docs/server-api/)
 maxListeners  | number  | 10 |
 adapter | any | null | SocketIO Adapter
+
+### Cors
+
+**PM** default cors options are:
+
+```
+'access-control-allow-methods': "GET,HEAD,PUT,PATCH,POST,DELETE",
+'access-control-allow-origin': "*",
+'Access-Control-Allow-Credentials': 'false',
+'success-code': '204'
+```
+
+To change that, overwrite new values into cors options
+
+```ts
+@SERVICE({
+  version: 1,
+  cors: {
+    'access-control-allow-methods': "GET,PUT,POST,DELETE",
+    'content-type': 'application/json'
+  }
+})
+class Test {}
+```
 
 ## Micro
 
@@ -87,7 +112,7 @@ Name | type | Default | Description
 name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern
 method | HttpMethod | 'GET' | 
-requestType | string | 'application/json | Same as 'Content-Type' header
+accepts | string | 'application/json | shortcut for 'Content-Type' header
 validate | (req: Request, res: Response) => boolean \| Promise\<boolean\> | null | validation method
 bodyQuota | number | 1024 * 100 | Request body size limit
 queryLength | number | 100 | Request query characters length limit
