@@ -172,22 +172,10 @@ url | URL | URL extends Node URL class with some few properties, most used one i
 params | { [key: string]: string } | includes route path params values.
 body | any |
 auth | any | useful to save some auth value.
-get | (key: string) => string | method to get specific request header value
+headers | IncomingHttpHeaders | return all current request headers.
+header | (key: string) => string | method to get specific request header value
 locals | Object | to set any additional data 
 http | NodeJS.IncomingMessage | 
-
-### Response
-
-**PMS** http response holds the original Node Server Response with a couple of methods.
-
-Name | Type | Description
---- | --- | ---
-json | (data?: any) => void | Used to send json data.
-status | (code: number) => Response | Used to set response status code.
-end | any | Overwrites orignal end method *recommended to use*
-http | NodeJS.ServerResponse | 
-
-**Response** will log any 500 family errors automatically.
 
 ### Request Path Patterns
 
@@ -214,6 +202,39 @@ http | NodeJS.ServerResponse |
 - Parameters with Regexp can be optional as will */articles/{id:[a-z]{10}**:i**}?*
 - Parameters can be seperated by fixed value blocks */articles/{aid}/comments/{cid}*
 - Parameters and rest operator can be seperated by fixed value blocks as well.
+
+### Response
+
+**PMS** http response holds the original Node Server Response with a couple of methods.
+
+Name | Type | Description
+--- | --- | ---
+json | (data?: any) => void | Used to send json data.
+status | (code: number) => Response | Used to set response status code.
+type | (contentType: string) => void | assign content-type response header value.
+end | any | Overwrites orignal end method *recommended to use*
+setHeader | (headers: { [key: string]: string \| string[] \| number }) => void | set multiple headers at once
+http | NodeJS.ServerResponse | 
+
+Using response.json() will set 'content-type' response header to 'application/json'.
+**Response** will log any 500 family errors automatically.
+
+#### Response Security headers
+
+**PM** add additional response headers fro more secure environment as follows:
+
+```
+'Cache-Control': 'no-cache,no-store,max-age=0,must-revalidate'
+'Pragma': 'no-cache'
+'Expires': '-1'
+'X-XSS-Protection': '1;mode=block'
+'X-Frame-Options': 'DENY'
+'Content-Security-Policy': "script-src 'self'"
+'X-Content-Type-Options': 'nosniff'
+```
+
+
+Headers can be overwritten using **response.setHeaders** method, 
 
 
 ## SUBJECT DECORATOR

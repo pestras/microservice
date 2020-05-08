@@ -350,7 +350,7 @@ export class Request<T = any> {
   auth?: any;
   readonly locals: { [key: string]: any } = {};
 
-  constructor(public http: http.IncomingMessage) {
+  constructor(public readonly http: http.IncomingMessage) {
     this.url = new URL('http://' + this.http.headers.host + this.http.url);
     this.method = <HttpMehod>this.http.method.toUpperCase();
   }
@@ -391,12 +391,12 @@ function createRequest(http: http.IncomingMessage): Promise<Request> {
 export class Response {
   private _ended: boolean;
 
-  constructor(private request: Request, public http: http.ServerResponse) {
+  constructor(private request: Request, public readonly http: http.ServerResponse) {
     this.http.setHeader('Cache-Control', 'no-cache,no-store,max-age=0,must-revalidate');
     this.http.setHeader('Pragma', 'no-cache');
     this.http.setHeader('Expires', '-1');
     this.http.setHeader('X-XSS-Protection', '1;mode=block');
-    this.http.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    this.http.setHeader('X-Frame-Options', 'DENY');
     this.http.setHeader('Content-Security-Policy', "script-src 'self'");
     this.http.setHeader('X-Content-Type-Options', 'nosniff');
   }
