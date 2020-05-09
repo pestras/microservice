@@ -934,7 +934,7 @@ export class Micro {
       logger.transferTo(service);
 
     if (typeof service.onInit === "function") {
-      let promise: Promise<any> = service.init();
+      let promise: Promise<any> = service.onInit();
       if (promise && typeof promise.then === "function") {
         try {
           await promise;
