@@ -329,7 +329,6 @@ function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, param
 
 
   for (let routePath in routes[method]) {
-    console.log(routePath, url.pathname);
     let route = routes[method][routePath];
     let pathPattern = new PathPattern(route.path);
     if (pathPattern.match(url.pathname)) return { route, params: pathPattern.params };
