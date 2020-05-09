@@ -147,14 +147,12 @@ export interface Routes {
 /**
  * Routes repo object that will hold all defined routes
  */
-let serviceRoutes: Routes = {
-  GET: {
-    healthcheck: { path: 'healthcheck', name: 'healthcheck', method: 'GET' },
-    readiness: { path: 'readiness', name: 'readiness', method: 'GET' },
-    liveness: { path: 'liveness', name: 'liveness', method: 'GET' }
-  }
-};
-let serviceRoutesRepo: (RouteConfig & { key: string })[] = [];
+let serviceRoutes: Routes = {};
+let serviceRoutesRepo: (RouteConfig & { key: string })[] = [
+  { path: '/healthcheck', key: 'healthcheck', method: 'GET' },
+  { path: '/readiness', key: 'readiness', method: 'GET' },
+  { path: '/liveness', key: 'liveness', method: 'GET' }
+];
 
 /**
  * route decorator
@@ -329,7 +327,9 @@ function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, param
   if (!routes || !routes[method])
     return null;
 
+
   for (let routePath in routes[method]) {
+    console.log(routePath, url.pathname);
     let route = routes[method][routePath];
     let pathPattern = new PathPattern(route.path);
     if (pathPattern.match(url.pathname)) return { route, params: pathPattern.params };
@@ -488,8 +488,8 @@ function createServer() {
       } else {
 
         let { route, params } = findRoute(request.url, <HttpMehod>request.method);
-
-        if (!route || typeof service[route.key] !== "function") {
+        
+        if (!route) {
           if (typeof service.on404 === "function") return service.on404(request, response);
           return response.status(CODES.NOT_FOUND).end();
         }
@@ -510,6 +510,11 @@ function createServer() {
         if (route.name === 'liveness' && request.method === 'GET') {
           if (typeof service.onLivecheck === "function") return service.onLivecheck(response);
           else return response.status(200).end();
+        }
+
+        if (typeof service[route.key] !== "function") {
+          if (typeof service.on404 === "function") return service.on404(request, response);
+          return response.status(CODES.NOT_FOUND).end();
         }
 
         timer = setTimeout(() => {
@@ -966,7 +971,8 @@ export class Micro {
         key: config.key
       };
 
-      serviceRoutes[route.method] = { [route.path]: route };
+      serviceRoutes[route.method] = serviceRoutes[route.method] || {};
+      serviceRoutes[route.method][route.path] = route;
       logger.info(`route: ${route.path} - ${route.method} initialized`);
     }
 
