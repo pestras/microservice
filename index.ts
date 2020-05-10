@@ -323,15 +323,16 @@ export function DISCONNECT(namespaces: string[] = ['default']) {
  * @param method {HttpMethod}
  */
 function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, params: { [key: string]: string } } {
-  let routes = serviceRoutes;
-  if (!routes || !routes[method])
+  if (!serviceRoutes || !serviceRoutes[method])
     return null;
+    
+  let pathname = PathPattern.Clean(url.pathname)
+  if (serviceRoutes[method][pathname] !== undefined) return { route: serviceRoutes[method][pathname], params: {} };
 
-
-  for (let routePath in routes[method]) {
-    let route = routes[method][routePath];
+  for (let routePath in serviceRoutes[method]) {
+    let route = serviceRoutes[method][routePath];
     let pathPattern = new PathPattern(route.path);
-    if (pathPattern.match(url.pathname)) return { route, params: pathPattern.params };
+    if (pathPattern.match(pathname)) return { route, params: pathPattern.params };
   }
 
   return <any>{};

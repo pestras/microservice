@@ -202,6 +202,26 @@ http | NodeJS.IncomingMessage |
 - Parameters with Regexp can be optional as will */articles/{id:[a-z]{10}**:i**}?*
 - Parameters can be seperated by fixed value blocks */articles/{aid}/comments/{cid}*
 - Parameters and rest operator can be seperated by fixed value blocks as well.
+- On each request, routes are checked in two steps to enhance performance
+  - Perfect match: Looks for the perfect match (case sensetive).
+  - By Order: if first step fail, then routes are checked by order they were defined (case insensetive)
+
+```ts
+// first to check
+@ROUTE({ path: '/{id}'})
+getById() {}
+
+// second to check
+@ROUTE({ path: '/published' })
+getPublished() {}
+
+/**
+ * Later when an incomimg reauest made including pathname as: '/Published' with capitalized P
+ * first route to match is '/{id}',
+ * However when the path name is '/published' with lower cased p '/published' as the defined route then
+ * the first route to match is '/published' instead of '/{id}'
+ */
+```
 
 ### Response
 
