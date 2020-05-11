@@ -6,7 +6,7 @@ import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
 import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
-import fetch, { IFetchOptions } from '@pestras/toolbox/fetch';
+import { fetch, IFetchOptions } from '@pestras/toolbox/fetch';
 import { CODES } from '@pestras/toolbox/fetch/codes';
 import { IncomingHttpHeaders } from 'http2';
 
@@ -51,6 +51,7 @@ export interface SocketIOOptions {
  */
 export interface ServiceConfig {
   version?: number;
+  kebabCase?: boolean;
   port?: number;
   host?: string;
   workers?: number;
@@ -67,7 +68,7 @@ export interface ServiceConfig {
  * Service Config Object
  */
 let serviceConfig: ServiceConfig & { name: string };
-const defaultCors: IncomingHttpHeaders & { 'success-code'?: string } = {
+const DEFAULT_CORS: IncomingHttpHeaders & { 'success-code'?: string } = {
   'access-control-allow-methods': "GET,HEAD,PUT,PATCH,POST,DELETE",
   'access-control-allow-origin': "*",
   'Access-Control-Allow-Credentials': 'false',
@@ -82,6 +83,15 @@ export interface IRedisOptions {
   pass?: string;
 }
 
+function toKebabCasing(name: string) {
+  if (!name) return '';
+
+  return name.replace(/([a-z0-9][A-Z])/g, (match: string, $1: string) => {
+    console.log(...arguments);
+    return $1.charAt(0) + '-' + $1.charAt(1).toLowerCase()
+  });
+}
+
 /**
  * Service Decorator
  * accepts all service config
@@ -89,9 +99,10 @@ export interface IRedisOptions {
  */
 export function SERVICE(config: ServiceConfig = {}) {
   return (constructor: any) => {
-    let cors = Object.assign({}, defaultCors);
+    let cors = Object.assign({}, DEFAULT_CORS);
+    let name = config.kebabCase === false ? constructor.name.toLowerCase() : toKebabCasing(constructor.name).toLowerCase();
     serviceConfig = {
-      name: constructor.name.toLowerCase(),
+      name,
       version: config.version || 0,
       workers: config.workers || 0,
       logLevel: config.logLevel || LOGLEVEL.INFO,

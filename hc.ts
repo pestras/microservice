@@ -1,18 +1,27 @@
-import { request } from 'http';
+import { PathPattern } from '@pestras/toolbox/url/path-pattern';
+import { fetch } from '@pestras/toolbox/fetch';
 
-let options = {
-  timeout: 2000,
-  port: process.argv[2] || 3000,
-  host: 'localhost',
-  path: '/healthcheck'
-};
+let serviceRootURL = process.argv[2];
+let port = process.argv[3]; 
 
-const req = request(options, res => {
-  console.info('STATUS:', res.statusCode);
-  process.exit(res.statusCode === 200 ? 0 : 1);
-});
-
-req.on('error', err => {
-  console.error('ERROR:', err);
-  process.exit(1)
-});
+if (!serviceRootURL) {
+  console.log('service root path required');
+  process.exit(1);
+} else {
+  let path = '/' + PathPattern.Clean(serviceRootURL) + '/healthcheck';
+  let port = +process.argv[3] || 3000
+  console.log(path, process.argv[3] || 3000);
+  fetch({
+    url: 'http://localhost:' + port + path,
+    timeout: 10000
+  })
+    .then(res => {
+      console.info('STATUS:', res.statusCode);
+      if (res.statusCode === 200) process.exit(0);
+      else process.exit(1);
+    })
+    .catch(e => {      
+    console.error('ERROR:', e);
+    process.exit(1)
+    });
+}

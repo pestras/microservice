@@ -19,6 +19,7 @@ class Test {}
 Name        | Type     | Defualt         | Description
 ----        | -----    | ------          | -----
 version     | number   | 0               | Current verion of our service, versions are used on rest resource */someservice/v1/...*.
+kebabCase   | boolean  | true            | convert class name to kebekCasing as *ArticlesQueryAPI* -> *articles-query-api*
 port        | number   | 3000            | Http server listening port.   
 host        | string   | 0.0.0.0         | Http server host.
 workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
@@ -207,20 +208,23 @@ http | NodeJS.IncomingMessage |
   - By Order: if first step fail, then routes are checked by order they were defined (case insensetive)
 
 ```ts
-// first to check
-@ROUTE({ path: '/{id}'})
-getById() {}
-
-// second to check
-@ROUTE({ path: '/published' })
-getPublished() {}
-
-/**
- * Later when an incomimg reauest made including pathname as: '/Published' with capitalized P
- * first route to match is '/{id}',
- * However when the path name is '/published' with lower cased p '/published' as the defined route then
- * the first route to match is '/published' instead of '/{id}'
- */
+@SERVICE()
+class AticlesQuery {
+  // first to check
+  @ROUTE({ path: '/{id}'})
+  getById() {}
+  
+  // second to check
+  @ROUTE({ path: '/published' })
+  getPublished() {}
+  
+  /**
+   * Later when an incomimg reauest made including pathname as: 'articles-query/v0/Published' with capitalized P
+   * first route to match is '/{id}',
+   * However when the path name is 'articles-query/v0/published' with lowercased p '/published' as the defined route then
+   * the first route to match is '/published' instead of '/{id}'
+   */
+}
 ```
 
 ### Response
@@ -779,21 +783,21 @@ class Publisher {
 
 # Health Check
 
-For health check in Dockerfile and docker-compose
+For health check in Dockerfile or docker-compose
 
 ```Dockerfile
-HEALTHCHECK --interval=30s CMD node ./node_modules/@pestras/microservice/hc.js 3000
+HEALTHCHECK --interval=30s CMD node ./node_modules/@pestras/microservice/hc.js /articles/v0 3000
 ```
 
 ```yml
 healthcheck:
-  test: ["CMD", "node", "./node_modules/@pestras/microservice/hc.js", "3000"]
+  test: ["CMD", "node", "./node_modules/@pestras/microservice/hc.js", "/articles/v0", "3000"]
   interval: 1m30s
   timeout: 10s
   retries: 3
   start_period: 40s
 ```
-
+Root path is required as the first parameter.
 Port defaults to 3000 it is optional.
 
 Thank you
