@@ -3,6 +3,12 @@
 **Pestras Microservice** as **PMS** is built on nodejs framework using typescript, supporting http rest service, nats server, socket io and can run multible instances based on
 nodejs cluster with messageing made easy between workers.
 
+# Template
+
+```bash
+$ git clone https://github.com/pestras/pestras-microservice-template
+```
+
 ## Creating Service
 
 In order to create our service we need to use **SERVICE** decorator which holds the main configuration of our service class.
