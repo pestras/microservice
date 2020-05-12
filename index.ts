@@ -190,11 +190,10 @@ export function HOOK(timeout = 10000) {
  */
 export interface SubjectConfig {
   subject: string;
-  validate?: (nats: Nats.Client, msg: NatsMsg) => boolean | Promise<boolean>;
+  hooks?: string[];
   dataQuota?: number;
   payload?: Nats.Payload;
   options?: Nats.SubscriptionOptions;
-  auth?: (nats: Nats.Client, msg: NatsMsg) => boolean | Promise<boolean>;
 }
 
 /**
@@ -212,10 +211,9 @@ export function SUBJECT(config: SubjectConfig) {
     serviceSubjects[key] = <SubjectConfig>{
       subject: config.subject,
       options: config.options || {},
-      validate: config.validate || null,
+      hooks: config.hooks || [],
       dataQuota: config.dataQuota || 1024 * 100,
-      payload: config.payload || Nats.Payload.JSON,
-      auth: config.auth || null
+      payload: config.payload || Nats.Payload.JSON
     }
   };
 }
@@ -450,8 +448,7 @@ export class Response {
 
   json(data?: any) {
     this.http.setHeader('Content-Type', 'application/json; charset=utf-8');
-    if (data && (Array.isArray(data) || typeof data === "object")) this.end(JSON.stringify(data));
-    else this.end(data);
+    !!data ? this.end(JSON.stringify(data)) : this.end("");
   }
 
   status(code: CODES) {
@@ -639,6 +636,7 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
   for (let key in serviceSubjects) {
     let subjectConf = serviceSubjects[key];
+    let ended = false;
 
     if (typeof service[key] === "function") {
       let sub = await nats.subscribe(subjectConf.subject, async (err, msg) => {
@@ -654,45 +652,55 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
           return logger.warn('msg body quota exceeded');
         }
 
-        if (typeof subjectConf.validate === "function") {
+        if (subjectConf.hooks && subjectConf.hooks.length > 0) {
+          let currHook: string;
+          let hookTimer: any;
+
+          if (ended) return;
+
           try {
-            let ret = subjectConf.validate.call(service, nats, msg);
-            if (ret) {
-              if (typeof (<Promise<any>>ret).then === "function") {
-                let passed = await ret;
-                if (!passed) return;
+            for (let hook of subjectConf.hooks) {
+              currHook = hook;
+              let hookTimeout = hooksRepo[hook];
+
+              if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
+              else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
+
+              hookTimer = setTimeout(() => {
+                logger.warn('hook timeout:' + hook);
+                if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
+                ended = true;
+              }, hookTimeout);
+
+              let ret = service[hook](nats, msg, key);
+              if (ret) {
+                if (typeof ret.then === "function") {
+                  let passed = await ret;
+                  clearTimeout(hookTimer);
+
+                  if (!passed) {
+                    ended = true;
+                    return;
+                  }
+                }
+
+              } else {
+                ended = true;
+                clearTimeout(hookTimer);
+                return;
               }
-            } else return;
-          } catch (err) {
-            if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
-            return logger.error(err, { subject: subjectConf.subject });
-          }
-        }
-
-        if (typeof subjectConf.auth === "function") {
-          let authTimer = setTimeout(() => {
-            logger.error('auth timeout', { subject: subjectConf.subject });
-            if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
-          }, serviceConfig.authTimeout);
-
-          try {
-            let ret = subjectConf.auth.call(service, nats, msg);
-            if (ret) {
-              if (typeof (<Promise<any>>ret).then === "function") {
-                let passed = await ret;
-                clearTimeout(authTimer);
-                if (!passed) return;
-              } else clearTimeout(authTimer);
-            } else {
-              clearTimeout(authTimer);
-              return;
             }
-          } catch (err) {
-            clearTimeout(authTimer);
-            if (msg.reply) Micro.nats.publish(msg.reply, err.message || err);
-            return logger.error(err);
+
+            clearTimeout(hookTimer);
+
+          } catch (e) {
+            clearTimeout(hookTimer);
+            if (msg.reply) Micro.nats.publish(msg.reply, { error: { msg: 'hook unhandled error' + currHook } });
+            return logger.error(e);
           }
         }
+
+        if (ended) return;
 
         try {
           service[key](nats, msg);
