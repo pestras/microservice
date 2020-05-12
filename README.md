@@ -120,10 +120,9 @@ name | string | Method name applied to | name of the route
 path | string | '' | Service path pattern
 method | HttpMethod | 'GET' | 
 accepts | string | 'application/json | shortcut for 'Content-Type' header
-validate | (req: Request, res: Response) => boolean \| Promise\<boolean\> | null | validation method
+hooks | string[] | [] | hooks methods that should be called before the route handler
 bodyQuota | number | 1024 * 100 | Request body size limit
 queryLength | number | 100 | Request query characters length limit
-auth | (request: Request, res: Response) => boolean \| Promise\<boolean\> | null | auth method
 timeout | number | 15000 | Max time to handle the request before canceling
 
 ```ts
@@ -146,28 +145,8 @@ class Articles {
 
     res.json(article);
   }
-
-  @ROUTE({
-    method: 'POST',
-    // context is the service instance
-    auth: async function (this: Article, req: Request<T>, res: Response) {
-      //  some authorization
-      // return false to end request
-    }
-  })
-  insertArticle(req: Request<T>, res: Response) {
-    let auth = req.auth;
-    let article = req.body;
-
-    // insert article
-
-    res.json({ id: artcle.id });
-  }
 }
 ```
-
-*Note: Both validation and auth methods should handle the response on failure and returning or resolving to false, also the context is changed to the service instance
-but we need to inform typescript by defining the type of 'this' to the service class name.*
 
 ### Request
 
@@ -265,6 +244,44 @@ Using response.json() will set 'content-type' response header to 'application/js
 
 
 Headers can be overwritten using **response.setHeaders** method, 
+
+## HOOK DECORATOR
+
+Hooks are called before the atual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
+
+Hooks accepts an optional timeout argument defaults to 10s, and the hook handler will get three inputs (request, response, handlerName: name of the method that called the hook).
+
+```ts
+import { Micro, SERVICE, Request, Response, HOOK, ROUTE, CODES } from '@pestras/microservice';
+
+@SERVICE()
+class TEST {
+  @HOOK(10000)
+  async auth(req: Request, res: Response, handlerName: string) {
+    const user: User;
+  
+    // some auth code
+    // ...
+
+    if (!user) {
+      res.status(CODES.UNAUTHORIZED).json({ msg: 'user not authorized' });
+      return false;
+    }
+  
+    req.auth = user;
+    return true
+  }
+
+  @ROUTE({ hooks: ['auth'] })
+  handlerName(req: Request, res: Response) {
+    const user = req.auth;
+  }
+}
+
+Micro.start(Test);
+```
+
+Hooks should handle the response on failure and returning or resolving to false, otherwise **PM** will check response status and if its not ended, it will consider the situation as a bad request from client that did not pass the hook and responding with BAD_REQUEST code 400.
 
 
 ## SUBJECT DECORATOR
@@ -599,10 +616,10 @@ we need to connect to a databese or to make some async operations before start l
 It can return a promise or nothing.
 
 ```ts
-import { SERVICE } from '@pestras/microservice';
+import { SERVICE, ServiceEvents } from '@pestras/microservice';
 
 @SERVICE({ workers: 4 })
-class Publisher {
+class Publisher implements ServiceEvents {
 
   async onInit() {
     // connect to a databese
@@ -616,10 +633,10 @@ class Publisher {
 This method is called once all our listeners are ready.
 
 ```ts
-import { SERVICE } from '@pestras/microservice';
+import { SERVICE, ServiceEvents } from '@pestras/microservice';
 
 @SERVICE({ workers: 4 })
-class Publisher {
+class Publisher implements ServiceEvents {
 
   onReay() {}
 }
@@ -630,8 +647,10 @@ class Publisher {
 Called once our service is stopped for any reason, and the exit signal is passed as an argument.
 
 ```ts
-@SERVICE()
-class Publisher {
+import { SERVICE, ServiceEvents } from '@pestras/microservice';
+
+@SERVICE({ workers: 4 })
+class Publisher implements ServiceEvents {
 
   onExit(signal: NodeJS.Signals) {
     // disconnecting from the databese
@@ -643,17 +662,21 @@ class Publisher {
 
 **PMS** has a built in lightweight logger that logs everything to the console.
 
-In order to change that behavior we can define **onLog** hook method in our service and **PMS** will detect that method and will transfer all logs to it, besides enabling **transferLog**
+In order to change that behavior we can define **onLog** event method in our service and **PMS** will detect that method and will transfer all logs to it, besides enabling **transferLog**
 options in service config.
 
 ```ts
-import { SERVICE, SUBJECT, Micro } from '@pestras/microservice';
+import { SERVICE, SUBJECT, Micro, ServiceEvents } from '@pestras/microservice';
 
 @SERVICE({
   version: 1
   transferLog: process.env.NODE_ENV === 'production'
 })
-class Test {
+class Test implements ServiceEvents {
+
+  onLog(level: LOGLEVEL, msg: any, extra: any) {
+    // what ever you want
+  }
 
   @SUBJECT({ subject: 'newArticle' })
   newArticle() {
@@ -662,10 +685,6 @@ class Test {
     } catch (e) {
       Micro.logger.error('some error', e);
     }
-  }
-
-  onLog(level: LOGLEVEL, msg: any, extra: any) {
-    // what ever you want
   }
 }
 ```
@@ -676,7 +695,7 @@ An event triggered for docker swarm healthcheck.
 
 ```ts
 @SERVICE()
-class Publisher {
+class Publisher implements ServiceEvents {
 
   // http: GET /healthcheck
   async onHealthcheck(res: Response) {
@@ -693,7 +712,7 @@ An event triggered for kubernetes ready check.
 
 ```ts
 @SERVICE()
-class Publisher {
+class Publisher implements ServiceEvents {
 
   // http: GET /readiness
   async onReadycheck(res: Response) {
@@ -710,7 +729,7 @@ An event triggered for kubernetes live check.
 
 ```ts
 @SERVICE()
-class Publisher {
+class Publisher implements ServiceEvents {
 
   // http: GET /liveness
   async onLivecheck(res: Response) {
@@ -727,7 +746,7 @@ Called whenever a new http request is received, passing the Request and Response
 
 ```ts
 @SERVICE()
-class Publisher {
+class Publisher implements ServiceEvents {
 
   async onRequest(req: Request, res: Response) { }
 }
@@ -741,7 +760,7 @@ Called whenever http request has no route handler found.
 
 ```ts
 @SERVICE()
-class Publisher {
+class Publisher implements ServiceEvents {
 
   on404(req: Request, res: Response) {
 
@@ -757,7 +776,7 @@ Called whenever an error accured when handling an http request, passing the Requ
 
 ```ts
 @SERVICE({ workers: 4 })
-class Publisher {
+class Publisher implements ServiceEvents {
 
   onError(req: Request, res: Response, err: any) { }
 }
@@ -769,7 +788,7 @@ I think it is clear by only reading the name.
 
 ```ts
 @SERVICE({ workers: 4 })
-class Publisher {
+class Publisher implements ServiceEvents {
 
   onUnhandledRejection(reason: any, p: Promise<any>) { }
 }
@@ -781,7 +800,7 @@ Also clear.
 
 ```ts
 @SERVICE({ workers: 4 })
-class Publisher {
+class Publisher implements ServiceEvents {
 
   onUnhandledException(err: any) { }
 }
@@ -792,7 +811,7 @@ class Publisher {
 For health check in Dockerfile or docker-compose
 
 ```Dockerfile
-HEALTHCHECK --interval=30s CMD node ./node_modules/@pestras/microservice/hc.js /articles/v0 3000
+HEALTHCHECK --interval=1m30s --timeout=2s --start_period=10s CMD node ./node_modules/@pestras/microservice/hc.js /articles/v0 3000
 ```
 
 ```yml
@@ -803,7 +822,6 @@ healthcheck:
   retries: 3
   start_period: 40s
 ```
-Root path is required as the first parameter.
-Port defaults to 3000 it is optional.
+Root path is required as the first parameter, while port defaults to 3000.
 
 Thank you

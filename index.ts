@@ -6,9 +6,10 @@ import { WorkerMessage, WorkersManager } from './workers';
 import { LOGLEVEL, Logger } from './logger';
 import { URL } from '@pestras/toolbox/url';
 import { PathPattern } from '@pestras/toolbox/url/path-pattern';
-import { fetch, IFetchOptions } from '@pestras/toolbox/fetch';
-import { CODES } from '@pestras/toolbox/fetch/codes';
+import { fetch, IFetchOptions, CODES } from '@pestras/toolbox/fetch';
 import { IncomingHttpHeaders } from 'http2';
+
+export { CODES };
 
 export interface NatsMsg<T = any> extends Nats.Msg {
   data?: T;
@@ -132,10 +133,9 @@ export interface RouteConfig {
   method?: HttpMehod;
   /** default: application/json; charset=utf-8 */
   accepts?: string;
-  validate?: (request: Request, response: Response) => boolean | Promise<boolean>;
+  hooks?: string[];
   bodyQuota?: number;
   queryLength?: number;
-  auth?: (request: Request, response: Response) => boolean | Promise<boolean>;
   timeout?: number;
 }
 
@@ -165,13 +165,23 @@ let serviceRoutesRepo: (RouteConfig & { key: string })[] = [
 ];
 
 /**
- * route decorator
+ * Route decorator
  * accepts route configuration
  * @param config 
  */
 export function ROUTE(config: RouteConfig = {}) {
   return (target: any, key: string) => {
     serviceRoutesRepo.push({ key, ...config });
+  }
+}
+
+/** Hooks Repo */
+const hooksRepo: { [key: string]: number } = {};
+
+/** Hook Decorator */
+export function HOOK(timeout = 10000) {
+  return (target: any, key: string) => {
+    hooksRepo[key] = Math.abs(timeout || 10000);
   }
 }
 
@@ -335,7 +345,7 @@ export function DISCONNECT(namespaces: string[] = ['default']) {
 function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, params: { [key: string]: string } } {
   if (!serviceRoutes || !serviceRoutes[method])
     return null;
-    
+
   let pathname = PathPattern.Clean(url.pathname)
   if (serviceRoutes[method][pathname] !== undefined) return { route: serviceRoutes[method][pathname], params: {} };
 
@@ -467,9 +477,11 @@ function createServer() {
       let request = await createRequest(httpRequest);
       let response = new Response(request, httpResponse);
       let timer: NodeJS.Timeout = null;
+      let hookTimer: NodeJS.Timeout = null;
 
       request.http.on('close', () => {
-        clearTimeout(timer)
+        clearTimeout(timer);
+        clearTimeout(hookTimer);
       });
 
       logger.debug(request.headers);
@@ -498,7 +510,7 @@ function createServer() {
       } else {
 
         let { route, params } = findRoute(request.url, <HttpMehod>request.method);
-        
+
         if (!route) {
           if (typeof service.on404 === "function") return service.on404(request, response);
           return response.status(CODES.NOT_FOUND).end();
@@ -546,51 +558,56 @@ function createServer() {
         if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
 
-        if (typeof route.validate === "function") {
+        if (route.hooks && route.hooks.length > 0) {
+          let currHook: string;
           try {
-            let ret = route.validate.call(service, request, response);
-            if (ret) {
-              if (typeof (<Promise<boolean>>ret).then === "function") {
-                let passed = await ret;
-                if (!passed) {
-                  if (!response.ended) response.status(CODES.BAD_REQUEST).json({ msg: 'invalidInput' });
-                  return;
+            for (let hook of route.hooks) {
+              // check if response already sent, that happens when hook timeout
+              if (response.ended) return;
+
+              currHook = hook;
+              let hookTimeout = hooksRepo[hook];
+
+              if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
+              else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
+
+              hookTimer = setTimeout(() => {
+                logger.warn('hook timeout:' + hook);
+                response.status(CODES.REQUEST_TIMEOUT).end('request time out');
+              }, hookTimeout);
+
+              let ret = service[hook](request, response, route.key);
+              if (ret) {
+                if (typeof ret.then === "function") {
+                  let passed = await ret;
+                  if (!passed) {
+                    if (!response.ended) {
+                      logger.warn('unhandled hook response: ' + hook);
+                      response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+                    }
+                    return;
+                  }
+                  clearTimeout(hookTimer);
+                } else {
+                  clearTimeout(hookTimer);
                 }
+
+              } else {
+                if (!response.ended) {
+                  logger.warn('unhandled hook response: ' + hook);
+                  response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
+                }
+                return;
               }
-            } else {
-              if (!response.ended) response.status(CODES.BAD_REQUEST).json({ msg: 'invalidInput' });
-              return;
             }
-          } catch (err) {
-            logger.error(err, { route: route.name });
-            return response.status(CODES.UNKNOWN_ERROR).json(err);
+          } catch (e) {
+            logger.error('hook unhandled error: ' + currHook, e);
+            response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
           }
         }
 
-        if (typeof route.auth === "function") {
-          let authTimer = setTimeout(() => {
-            logger.error('auth timeout', { route: route.name });
-            response.status(CODES.SERVIC_UNAVAILABLE).end('auth timeout');
-          }, serviceConfig.authTimeout);
-
-          try {
-            let ret = route.auth.call(service, request, response);
-            if (ret) {
-              if (typeof (<Promise<boolean>>ret).then === "function") {
-                let passed = await ret;
-                clearTimeout(authTimer);
-                if (!passed) return;
-              }
-            } else {
-              clearTimeout(authTimer);
-              return;
-            }
-          } catch (err) {
-            clearTimeout(authTimer);
-            logger.error(err);
-            return response.status(CODES.UNKNOWN_ERROR).end(err.message || err);
-          }
-        }
+        // check if response already sent, that happens when hook timeout
+        if (response.ended) return;
 
         try {
           service[route.key](request, response);
@@ -832,7 +849,7 @@ export interface SocketIOPublishMessage {
   broadcast?: boolean;
 }
 
-export interface Hooks {
+export interface ServiceEvents {
   onLog?: (level: LOGLEVEL, msg: string, meta: any) => void;
   onInit?: () => void | Promise<void>;
   onReady?: () => void;
@@ -973,13 +990,16 @@ export class Micro {
         name: config.name || config.key,
         method: config.method || 'GET',
         accepts: config.accepts || 'application/json; charset=utf-8',
-        validate: config.validate || null,
+        hooks: config.hooks || [],
         bodyQuota: config.bodyQuota || 1024 * 100,
         queryLength: config.queryLength || 100,
-        auth: config.auth || null,
         timeout: (!config.timeout || config.timeout < 0) ? 1000 * 15 : config.timeout,
         key: config.key
       };
+
+      for (let hook of route.hooks)
+        if (service[hook] === undefined) Micro.logger.warn(`Hook not found: ${hook}!`);
+        else if (typeof service[hook] !== 'function') Micro.logger.warn(`invalid hook type: ${hook}!`);
 
       serviceRoutes[route.method] = serviceRoutes[route.method] || {};
       serviceRoutes[route.method][route.path] = route;
