@@ -9,7 +9,7 @@ import { PathPattern } from '@pestras/toolbox/url/path-pattern';
 import { fetch, IFetchOptions, CODES } from '@pestras/toolbox/fetch';
 import { IncomingHttpHeaders } from 'http2';
 
-export { CODES };
+export { CODES, LOGLEVEL };
 
 export interface NatsMsg<T = any> extends Nats.Msg {
   data?: T;
@@ -475,17 +475,21 @@ function createServer() {
       let response = new Response(request, httpResponse);
       let timer: NodeJS.Timeout = null;
       let hookTimer: NodeJS.Timeout = null;
-
+      
       request.http.on('close', () => {
         clearTimeout(timer);
         clearTimeout(hookTimer);
       });
 
+      
+      logger.info(`${request.method} ${request.url.pathname}`);
+      logger.debug('request headers:');
       logger.debug(request.headers);
 
-      logger.info(`${request.method} ${request.url.pathname}`);
-      logger.debug('body:')
-      logger.debug(request.body);
+      if (['POST', "PUT", 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
+        logger.debug('request body:')
+        logger.debug(request.body);
+      }
 
       response.http.on("error", err => {
         logger.error(err, { method: request.method });
@@ -606,11 +610,8 @@ function createServer() {
         // check if response already sent, that happens when hook timeout
         if (response.ended) return;
 
-        try {
-          service[route.key](request, response);
-        } catch (e) {
-          logger.error(e, { route: route.key });
-        }
+        try { service[route.key](request, response); }
+        catch (e) { logger.error(e, { route: route.key }); }
       }
 
     } catch (error) {
@@ -633,19 +634,22 @@ function createServer() {
  */
 async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
   let subscriptions = new Map<string, Nats.Subscription>();
-
+  
   for (let key in serviceSubjects) {
     let subjectConf = serviceSubjects[key];
-    let ended = false;
-
+    
     if (typeof service[key] === "function") {
+      logger.info('subscribing to subject: ' + subjectConf.subject);
       let sub = await nats.subscribe(subjectConf.subject, async (err, msg) => {
+        let ended = false;
         logger.info(`subject called: ${subjectConf.subject}`);
 
         if (err) return logger.error(err, { subject: subjectConf.subject, method: key });
 
         logger.debug('msg:');
         logger.debug(msg);
+        logger.debug('msg data:');
+        logger.debug(msg.data);
 
         if (subjectConf.dataQuota && subjectConf.dataQuota < msg.size) {
           if (msg.reply) Micro.nats.publish(msg.reply, 'msg body quota exceeded');
@@ -702,18 +706,16 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
         if (ended) return;
 
-        try {
-          service[key](nats, msg);
-        } catch (e) {
-          logger.error(e, { subject: { name: subjectConf.subject, msg }, method: key });
-        }
-      }, subjectConf.options);
+        try { service[key](nats, msg); }
+        catch (e) { logger.error(e, { subject: { name: subjectConf.subject, msg }, method: key }); }
 
+      }, subjectConf.options);
+      
       subscriptions.set(key, sub);
     }
-
-    return subscriptions;
   }
+
+  return subscriptions;
 }
 
 /**
