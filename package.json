@@ -1,6 +1,6 @@
 {
   "name": "@pestras/microservice",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Nodejs typescript microservice",
   "main": "index.js",
   "types": "index.ts",

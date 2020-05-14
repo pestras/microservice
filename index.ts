@@ -664,14 +664,14 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
           try {
             for (let hook of subjectConf.hooks) {
-              currHook = hook;
               let hookTimeout = hooksRepo[hook];
+              currHook = hook;
 
               if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
               else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
               hookTimer = setTimeout(() => {
-                logger.warn('hook timeout:' + hook);
+                logger.warn('hook timeout: ' + hook);
                 if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
                 ended = true;
               }, hookTimeout);
@@ -693,9 +693,10 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
                 clearTimeout(hookTimer);
                 return;
               }
+
+              clearTimeout(hookTimer);
             }
 
-            clearTimeout(hookTimer);
 
           } catch (e) {
             clearTimeout(hookTimer);
