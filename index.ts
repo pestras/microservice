@@ -340,7 +340,7 @@ export function DISCONNECT(namespaces: string[] = ['default']) {
  * @param url {URL}
  * @param method {HttpMethod}
  */
-function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, params: { [key: string]: string } } {
+function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, params: { [key: string]: string | string[] } } {
   if (!serviceRoutes || !serviceRoutes[method])
     return null;
 
@@ -363,7 +363,7 @@ function findRoute(url: URL, method: HttpMehod): { route: RouteFullConfig, param
 export class Request<T = any> {
   url: URL;
   method: HttpMehod;
-  params: { [key: string]: string };
+  params: { [key: string]: string | string[] };
   body: T;
   auth?: any;
   readonly locals: { [key: string]: any } = {};
@@ -475,13 +475,13 @@ function createServer() {
       let response = new Response(request, httpResponse);
       let timer: NodeJS.Timeout = null;
       let hookTimer: NodeJS.Timeout = null;
-      
+
       request.http.on('close', () => {
         clearTimeout(timer);
         clearTimeout(hookTimer);
       });
 
-      
+
       logger.info(`${request.method} ${request.url.pathname}`);
       logger.debug('request headers:');
       logger.debug(request.headers);
@@ -634,10 +634,10 @@ function createServer() {
  */
 async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
   let subscriptions = new Map<string, Nats.Subscription>();
-  
+
   for (let key in serviceSubjects) {
     let subjectConf = serviceSubjects[key];
-    
+
     if (typeof service[key] === "function") {
       logger.info('subscribing to subject: ' + subjectConf.subject);
       let sub = await nats.subscribe(subjectConf.subject, async (err, msg) => {
@@ -684,14 +684,14 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
                   if (!passed) {
                     ended = true;
-                    return;
+                    return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
                   }
                 }
 
               } else {
                 ended = true;
                 clearTimeout(hookTimer);
-                return;
+                return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
               }
 
               clearTimeout(hookTimer);
@@ -707,11 +707,15 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
         if (ended) return;
 
-        try { service[key](nats, msg); }
-        catch (e) { logger.error(e, { subject: { name: subjectConf.subject, msg }, method: key }); }
+        try {
+          (async () => {
+            await service[key](nats, msg);
+            logger.info(`subject ${msg.subject} ended`);
+          })();          
+        } catch (e) { logger.error(e, { subject: { name: subjectConf.subject, msg }, method: key }); }
 
       }, subjectConf.options);
-      
+
       subscriptions.set(key, sub);
     }
   }
