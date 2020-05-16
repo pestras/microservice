@@ -189,7 +189,6 @@ export function HOOK(timeout = 10000) {
  * Nats Subject config interface
  */
 export interface SubjectConfig {
-  subject: string;
   hooks?: string[];
   dataQuota?: number;
   payload?: Nats.Payload;
@@ -199,21 +198,21 @@ export interface SubjectConfig {
 /**
  * Nats subjects repo that will hold all defined subjects
  */
-let serviceSubjects: { [key: string]: SubjectConfig } = {};
+let serviceSubjects: { [key: string]: SubjectConfig & { key: string; } } = {};
 
 /**
  * Nats subject decorator
  * accepts subject configurations
  * @param config 
  */
-export function SUBJECT(config: SubjectConfig) {
+export function SUBJECT(subject: string, config: SubjectConfig = {}) {
   return (target: any, key: string) => {
-    serviceSubjects[key] = <SubjectConfig>{
-      subject: config.subject,
+    serviceSubjects[subject] = {
       options: config.options || {},
       hooks: config.hooks || [],
       dataQuota: config.dataQuota || 1024 * 100,
-      payload: config.payload || Nats.Payload.JSON
+      payload: config.payload || Nats.Payload.JSON,
+      key
     }
   };
 }
@@ -635,16 +634,16 @@ function createServer() {
 async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
   let subscriptions = new Map<string, Nats.Subscription>();
 
-  for (let key in serviceSubjects) {
-    let subjectConf = serviceSubjects[key];
+  for (let subject in serviceSubjects) {
+    let subjectConf = serviceSubjects[subject];
 
-    if (typeof service[key] === "function") {
-      logger.info('subscribing to subject: ' + subjectConf.subject);
-      let sub = await nats.subscribe(subjectConf.subject, async (err, msg) => {
+    if (typeof service[subjectConf.key] === "function") {
+      logger.info('subscribing to subject: ' + subject);
+      let sub = await nats.subscribe(subject, async (err, msg) => {
         let ended = false;
-        logger.info(`subject called: ${subjectConf.subject}`);
+        logger.info(`subject called: ${subject}`);
 
-        if (err) return logger.error(err, { subject: subjectConf.subject, method: key });
+        if (err) return logger.error(err, { subject: subject, method: subject });
 
         logger.debug('msg:');
         logger.debug(msg);
@@ -676,7 +675,7 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
                 ended = true;
               }, hookTimeout);
 
-              let ret = service[hook](nats, msg, key);
+              let ret = service[hook](nats, msg, subject);
               if (ret) {
                 if (typeof ret.then === "function") {
                   let passed = await ret;
@@ -709,14 +708,14 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
         try {
           (async () => {
-            await service[key](nats, msg);
+            await service[subjectConf.key](nats, msg);
             logger.info(`subject ${msg.subject} ended`);
           })();          
-        } catch (e) { logger.error(e, { subject: { name: subjectConf.subject, msg }, method: key }); }
+        } catch (e) { logger.error(e, { subject: { name: subject, msg }, method: subject }); }
 
       }, subjectConf.options);
 
-      subscriptions.set(key, sub);
+      subscriptions.set(subject, sub);
     }
   }
 
