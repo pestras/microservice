@@ -550,9 +550,14 @@ function createServer() {
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
         if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
-          if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1) return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
-          if (route.accepts.indexOf('application/json') > -1) request.body = JSON.parse(request.body);
-          if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1) request.body = URL.QueryToObject(request.body);
+          if (!!request.body) {
+            if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1) return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+            if (route.accepts.indexOf('application/json') > -1)
+              try{ request.body = JSON.parse(request.body); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
+            if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1) request.body = URL.QueryToObject(request.body);
+          } else {
+            request.body = {};
+          }
         }
 
         if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
