@@ -30,11 +30,10 @@ port        | number   | 3000            | Http server listening port.
 host        | string   | 0.0.0.0         | Http server host.
 workers     | number   | 0               | Number of node workers to run, if assigned to minus value will take max number of workers depending on os max cpus number
 logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
-tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **log** method
+tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **onLog** method
 nats        | string \| number \| NatsConnectionOptions | null        | see [Nats Docs](https://docs.nats.io/)
 exitOnUnhandledException | boolean | true |
 socket | SocketIOOptions | null |
-authTimeout | number | 15000 | auth method timeout
 cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
 
 #### LOGLEVEL Enum
@@ -101,7 +100,7 @@ Name | Type | Description
 --- | --- | ---
 logger | Logger |
 nats | NatsClient | see [Nats Docs](https://docs.nats.io/)
-subscription | Map<string, NatsSubscription> | Holds all subsciptions defined in our service
+subscriptions | Map<string, NatsSubscription> | Holds all subsciptions defined in our service
 namespaces | Map<string, SocketIO.Namespace> | Holds all namesspaces defind in our service
 message | (msg: string, data: WorkerMessage, target: 'all' \| 'others') => void | A helper method to broadcast a message between workers
 publish | (msg: SocketIOPublishMessage) => void | A helper method to organize communication between socketio servers among workers
@@ -117,9 +116,9 @@ Used to define a route for a rest service.
 Name | type | Default | Description
 --- | --- | --- | --- 
 name | string | Method name applied to | name of the route
-path | string | '' | Service path pattern
+path | string | '/' | Service path pattern
 method | HttpMethod | 'GET' | 
-accepts | string | 'application/json | shortcut for 'Content-Type' header
+accepts | string | 'application/json' | shortcut for 'Content-Type' header
 hooks | string[] | [] | hooks methods that should be called before the route handler
 bodyQuota | number | 1024 * 100 | Request body size limit
 queryLength | number | 100 | Request query characters length limit
@@ -129,8 +128,7 @@ timeout | number | 15000 | Max time to handle the request before canceling
 import { SERVICE, ROUTE } from '@pestras/microservice';
 
 @SERVICE({
-  version: 1,
-  port: 3333
+  version: 1
 })
 class Articles {
 
@@ -155,19 +153,19 @@ class Articles {
 Name | Type | Description
 --- | --- | ---
 url | URL | URL extends Node URL class with some few properties, most used one is *query*.
-params | { [key: string]: string } | includes route path params values.
+params | { [key: string]: string | string[] } | includes route path params values.
 body | any |
-auth | any | useful to save some auth value.
+auth | any | useful to save some auth value passed from 'auth' hook for instance.
 headers | IncomingHttpHeaders | return all current request headers.
 header | (key: string) => string | method to get specific request header value
-locals | Object | to set any additional data 
+locals | Object | to set any additional data passed between hooks and route handler
 http | NodeJS.IncomingMessage | 
 
 ### Request Path Patterns
 
 **PM** path patterns are very useful that helps match specific cases
 
-1. **/articles/{id}** - *id* is a param name that match any value: */articles/4384545*, */articles/45geeFEe8* but not */articles* or */articles/dsfge03tG9/1*
+1. **/articles/{id}** - *id* is a param name that match any value: */articles/4384545* or */articles/45geeFEe8* but not */articles* or */articles/dsfge03tG9/1*
 
 2. **/articles/{id}?** - same the previous one but id params is optional, so */articles* is acceptable.
 
@@ -176,10 +174,10 @@ http | NodeJS.IncomingMessage |
 
 4. **/articles/{id:^[0-9]{10}$}** - id param is constrained with a regex that allow only number value with 10 digits length only.
 
-5. **/articles/*** - this route has rest operator which holds the value of the rest of the path,
-*articles/scifi/0/10* does match and **request.params['\*']** equals 'scifi/0/10', however */articles* does not match
+5. **/articles/*** - this route has rest operator which holds the values of the rest blocks of the path separated by '/' as an array,
+*articles/scifi/0/10* does match and **request.params['\*']** equals ['scifi','0','10'], however */articles* does not match
 
-6. **/articles/*?** - same as the previous however */articles* does match
+6. **/articles/\*?** - same as the previous however */articles* does match
 
 #### notes:
 
@@ -230,7 +228,7 @@ Using response.json() will set 'content-type' response header to 'application/js
 
 #### Response Security headers
 
-**PM** add additional response headers fro more secure environment as follows:
+**PM** add additional response headers for more secure environment as follows:
 
 ```
 'Cache-Control': 'no-cache,no-store,max-age=0,must-revalidate'
@@ -247,7 +245,7 @@ Headers can be overwritten using **response.setHeaders** method,
 
 ## HOOK DECORATOR
 
-Hooks are called before the atual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
+Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
 
 Hooks accepts an optional timeout argument defaults to 10s, and the hook handler will get three inputs (request, response, handlerName: name of the method that called the hook).
 
@@ -288,12 +286,12 @@ Hooks should handle the response on failure and returning or resolving to false,
 
 Used to subscribe to nats server pulished subjects, and also accepts a subject string as a first argument and an optional config object.
 
-Name | Type | Required | Default | Description
+Name | Type | Default | Description
 --- | --- | --- | --- | ---
 hooks | string[] | [] | hooks methods that should be called before the route handler
-dataQuota | number | false | 1024 * 100 | Subject msg data size limit
-payload | Nats.Payload | false | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
-options | Nats.SubscriptionOptions | false | null | see [Nats Docs](https://docs.nats.io/)
+dataQuota | number | 1024 * 100 | Subject msg data size limit
+payload | Nats.Payload | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
+options | Nats.SubscriptionOptions | null | see [Nats Docs](https://docs.nats.io/)
 
 ```ts
 import { SERVICE, SUBJECT, NatsMsg } from '@pestras/microservice';
@@ -301,13 +299,13 @@ import { Client, Payload} from 'ts-nats';
 
 @SERVICE({
   version: 1,
-  port: 3334,
+  workers: 3,
   nats: { url: 'http://localhost:4222', payload: Payload.JSON }
 })
 class Email {
 
   // hooks works with subjects as well
-  // arguments are swaped with (nats: Nats.Client, msg: Nats.Msg, handlerName: string - name of the subject handler method that called the hook)
+  // arguments are swaped with (nats: Nats.Client, msg: NatsMsg, handlerName: string - name of the subject handler method that called the hook)
   @Hook(5000)
   async auth(nats: Client, msg: NatsMsg, handlerName: string) {
     // if hook failed its purpose should return false and check for msg reply if exists
@@ -400,8 +398,6 @@ Called when a socket establish a coonection for the first time, mostly used for 
 
 It accepts an optional array of namespaces names and defaults to ['defualt'].
 
-The second parameter is for auth helper.
-
 ```ts
 import { SERVICE, HANDSHAKE } from '@pestras/microservice';
 
@@ -420,7 +416,7 @@ class Publisher {
 
 ## USE DECORATOE
 
-Same as **HANDSHAKE** decorator, however no auth method expected.
+Same as **HANDSHAKE** decorator.
 
 ```ts
 import { SERVICE, USE } from '@pestras/microservice';
@@ -494,7 +490,7 @@ class Publisher {
 
 **PMS** uses node built in cluster api, and made it easy for us to manage workers communications.
 
-First of all to enable custering we should set workers number in our service configurations to some value other than zero.
+First of all to enable custering we should set workers number in our service configurations to some value greater than one.
 
 ```ts
 import { SERVICE } from '@pestras/microservice';
@@ -535,7 +531,7 @@ class Publisher {
 }
 ```
 
-In case of not usong a socket io adapter, **PMS** provide another helper method to manage communications between workers for handling socket io broadcasting using *Micro.publish* method which accepts SocketIOPublishMessage object.
+In case of not using a socket io adapter, **PMS** provide another helper method to manage communications between workers for handling socket io broadcasting using *Micro.publish* method which accepts SocketIOPublishMessage object.
 
 Name | Type | Required | Default | Description
 --- | --- | ---- | --- | ---
@@ -589,7 +585,7 @@ worker to start listening and then will restart the next one.
 
 # Attempt helper
 
-When multiple attempts on failure to reach the database for example **attempt** method whould be the right thing to use
+When a critical async call needs extra caution to avoid failure, **attempt** method helps to make multiple calls with wait time between and a timeout.
 
 ```ts
 @SERVICE()
@@ -623,6 +619,7 @@ class Article {
       let articles = await Micro.attampt(
         (curr: number) => articles.find({ ... }),
         (promise) => {
+          // called on current try timeout
           // terminate promise some how
         },
         // setting timeout option

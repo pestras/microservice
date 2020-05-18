@@ -61,7 +61,6 @@ export interface ServiceConfig {
   nats?: string | number | Nats.NatsConnectionOptions;
   exitOnUnhandledException?: boolean;
   socket?: SocketIOOptions;
-  authTimeout?: number;
   cors?: IncomingHttpHeaders & { 'success-code'?: string };
 }
 
@@ -112,7 +111,6 @@ export function SERVICE(config: ServiceConfig = {}) {
       host: config.host || '0.0.0.0',
       nats: config.nats,
       socket: config.socket,
-      authTimeout: config.authTimeout > 0 ? config.authTimeout : 15000,
       cors: Object.assign(cors, config.cors || {})
     }
   }
