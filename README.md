@@ -94,10 +94,29 @@ export class TEST {}
 Micro.start(Test);
 ```
 
+**Micro.start** method accepts additionl optional arguments that will be passed to service constructor in order
+
+```ts
+import { SERVICE, Micro } from '@pestras/microservice';
+import { config } from './config'; 
+
+@SERVICE({
+  // service config
+})
+export class TEST {
+  constructor(config: MyConf) {
+    // handle configurations
+  }
+}
+
+Micro.start(Test, config);
+```
+
 **Micro** object has another properties and methods that indeed we are going to use as well later in the service.
 
 Name | Type | Description
 --- | --- | ---
+status | MICRO_STATUS | INIT \| EXIT\| LIVE
 logger | Logger |
 nats | NatsClient | see [Nats Docs](https://docs.nats.io/)
 subscriptions | Map<string, NatsSubscription> | Holds all subsciptions defined in our service
@@ -105,7 +124,8 @@ namespaces | Map<string, SocketIO.Namespace> | Holds all namesspaces defind in o
 message | (msg: string, data: WorkerMessage, target: 'all' \| 'others') => void | A helper method to broadcast a message between workers
 publish | (msg: SocketIOPublishMessage) => void | A helper method to organize communication between socketio servers among workers
 request | (options: IFetchOptions) => Promise<{ statusCode: number, data: any }> | For http requests
-attempt | (action: (curr: number) => Promise, options: AttemptOptions) | Multiple calls for promise helper function
+attempt | (action: (curr: number) => Promise, options: AttemptOptions) | Multiple calls for promise helper function,
+exit | (code: number = 0, signal: NodeJs.Signal = "SIGTERM") => void | used to stop service
 
 ## ROUTE DECORATOR
 
@@ -651,7 +671,6 @@ class Publisher implements ServiceEvents {
 
   async onInit() {
     // connect to a databese
-    return;
   }
 }
 ```
@@ -672,7 +691,9 @@ class Publisher implements ServiceEvents {
 
 ## onExit
 
-Called once our service is stopped for any reason, and the exit signal is passed as an argument.
+Called once our service is stopped when calling **Micro.exit()** or when any of termination signals are triggerred *SIGTERM, SIGINT, SIGHUP*, 
+
+Exit code with the signal are passed as arguments.
 
 ```ts
 import { SERVICE, ServiceEvents } from '@pestras/microservice';
@@ -680,7 +701,7 @@ import { SERVICE, ServiceEvents } from '@pestras/microservice';
 @SERVICE({ workers: 4 })
 class Publisher implements ServiceEvents {
 
-  onExit(signal: NodeJS.Signals) {
+  onExit(code: number, signal: NodeJS.Signals) {
     // disconnecting from the databese
   }
 }
@@ -703,7 +724,7 @@ import { SERVICE, SUBJECT, Micro, ServiceEvents } from '@pestras/microservice';
 class Test implements ServiceEvents {
 
   onLog(level: LOGLEVEL, msg: any, extra: any) {
-    // what ever you want
+    // what ever you code
   }
 
   @SUBJECT({ subject: 'newArticle' })
@@ -812,25 +833,33 @@ class Publisher implements ServiceEvents {
 
 ## onUnhandledRejection
 
-I think it is clear by only reading the name.
+Defining this handler will cancel **exitOnonUnhandledRejection** option in service config, so you need to exit manually if it needs to be.
 
 ```ts
 @SERVICE({ workers: 4 })
 class Publisher implements ServiceEvents {
 
-  onUnhandledRejection(reason: any, p: Promise<any>) { }
+  onUnhandledRejection(reason: any, p: Promise<any>) {
+    // do somethig with the error and then maybe exit
+    // calling Micro.exit() will trigger onExit EventHandler
+    Micro.exit(1);
+  }
 }
 ```
 
 ## onUnhandledException
 
-Also clear.
+Defining this handler will cancel **exitOnUnhandledException** option in service config, so you need to exit manually if it needs to be.
 
 ```ts
 @SERVICE({ workers: 4 })
 class Publisher implements ServiceEvents {
 
-  onUnhandledException(err: any) { }
+  onUnhandledException(err: any) {
+    // do somethig with the error and then maybe exit
+    // calling Micro.exit() will trigger onExit EventHandler
+    Micro.exit(1);
+  }
 }
 ```
 

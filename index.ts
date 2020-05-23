@@ -60,6 +60,7 @@ export interface ServiceConfig {
   transferLog?: boolean;
   nats?: string | number | Nats.NatsConnectionOptions;
   exitOnUnhandledException?: boolean;
+  exitOnInhandledRejection?: boolean;
   socket?: SocketIOOptions;
   cors?: IncomingHttpHeaders & { 'success-code'?: string };
 }
@@ -107,6 +108,7 @@ export function SERVICE(config: ServiceConfig = {}) {
       logLevel: config.logLevel || LOGLEVEL.INFO,
       transferLog: !!config.transferLog,
       exitOnUnhandledException: config.exitOnUnhandledException === undefined ? true : !!config.exitOnUnhandledException,
+      exitOnInhandledRejection: config.exitOnInhandledRejection === undefined ? true : !!config.exitOnInhandledRejection,
       port: config.port || 3000,
       host: config.host || '0.0.0.0',
       nats: config.nats,
@@ -826,20 +828,6 @@ async function createSocketIO() {
 }
 
 /**
- * called when when service exits
- * close nats server connetion
- * call service onExit hook if exists
- */
-function exit(signal: NodeJS.Signals) {
-  logger.warn(`cleaning up before exit`);
-  server.close();
-  !!Micro.nats && Micro.nats.close();
-  if (typeof service.onExit === 'function') service.onExit(signal);
-  logger.warn(`service exited with signal: ${signal}`);
-  process.exit(0);
-}
-
-/**
  * listen to unhandled rejections an exceptions
  * log error
  * call related hook if exists
@@ -847,14 +835,14 @@ function exit(signal: NodeJS.Signals) {
  */
 process
   .on('unhandledRejection', (reason, p) => {
-    logger.error({ reason, msg: 'Unhandled Rejection', promise: p });
+    logger.error('Unhandled Rejection', { reason });
     if (service && typeof service.onUnhandledRejection === "function") service.onUnhandledRejection(reason, p);
+    else if (serviceConfig) serviceConfig.exitOnInhandledRejection && Micro.exit(1, "SIGTERM");
   })
   .on('uncaughtException', err => {
-    logger.error(err);
+    logger.error('uncaughtException', { err });
     if (service && typeof service.onUnhandledException === "function") service.onUnhandledException(err);
-    if (serviceConfig) serviceConfig.exitOnUnhandledException && process.exit(1);
-    else process.exit(1);
+    else if (serviceConfig) serviceConfig.exitOnUnhandledException && Micro.exit(1, "SIGTERM");
   });
 
 export interface SocketIOPublishMessage {
@@ -870,7 +858,7 @@ export interface ServiceEvents {
   onLog?: (level: LOGLEVEL, msg: string, meta: any) => void;
   onInit?: () => void | Promise<void>;
   onReady?: () => void;
-  onExit?: () => void;
+  onExit?: (code: number, signal: NodeJS.Signals) => void;
   onRequest?: (req: Request, res: Response) => void | Promise<void>;
   on404?: (req: Request, res: Response) => void;
   onError?: (req: Request, res: Response, err: any) => void;
@@ -887,6 +875,14 @@ export interface AttemptOptions {
   timeout?: number;
 }
 
+export enum MICRO_STATUS {
+  INIT = -1,
+  EXIT = 0,
+  LIVE = 1
+}
+
+let status: MICRO_STATUS = MICRO_STATUS.INIT;
+
 /**
  * export Micro Class with:
  * logger instance
@@ -899,6 +895,7 @@ export class Micro {
   static nats: Nats.Client = null;
   static subscriptions: Map<string, Nats.Subscription>;
   static namespaces: Map<string, SocketIO.Server | SocketIO.Namespace>;
+  static get status() { return status; }
 
   static message(msg: string, data: any = null, target: 'all' | 'others' = 'others') {
     process.send({ message: msg, target, data });
@@ -959,6 +956,16 @@ export class Micro {
     });
   }
 
+  static exit(code = 0, signal: NodeJS.Signals = "SIGTERM") {
+    status = MICRO_STATUS.EXIT;
+    logger.warn(`cleaning up before exit`);
+    server.close();
+    !!Micro.nats && Micro.nats.close();
+    if (typeof service.onExit === 'function') service.onExit(code, signal);
+    logger.warn(`service exited with signal: ${signal}, code: ${code}`);
+    process.exit(code);
+  }
+
   /**
    * instantiate service
    * implement service log if exist
@@ -970,13 +977,13 @@ export class Micro {
    * run http server listener
    * @param ServiceClass 
    */
-  static async start(ServiceClass: any) {
+  static async start(ServiceClass: any, ...args: any[]) {
     if (cluster.isMaster && !!serviceConfig.workers) {
       new WorkersManager(logger, serviceConfig.workers);
       return;
     }
 
-    service = new ServiceClass();
+    service = new ServiceClass(...args);
     logger.level = serviceConfig.logLevel;
 
     if (typeof service.log === 'function' && serviceConfig.transferLog)
@@ -1040,11 +1047,12 @@ export class Micro {
 
     if (Object.keys(serviceNamespaces).length > 0) Micro.namespaces = await createSocketIO();
 
+    status = MICRO_STATUS.LIVE;
     if (typeof service.onReady === 'function') service.onReady();
 
-    process.on('SIGTERM', (signal) => exit(signal));
-    process.on('SIGHUP', (signal) => exit(signal));
-    process.on('SIGINT', (signal) => exit(signal));
+    process.on('SIGTERM', (signal) => Micro.exit(0, signal));
+    process.on('SIGHUP', (signal) => Micro.exit(0, signal));
+    process.on('SIGINT', (signal) => Micro.exit(0, signal));
 
     server.listen(serviceConfig.port, serviceConfig.host, () => logger.info(`running http server on port: ${serviceConfig.port}, pid: ${process.pid}`));
   }
