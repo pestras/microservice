@@ -58,8 +58,9 @@ adapter | any | null | SocketIO Adapter
 **PM** default cors options are:
 
 ```
-'access-control-allow-methods': "GET,HEAD,PUT,PATCH,POST,DELETE",
+'access-control-allow-methods': "GET,HEAD,OPTIONS,PUT,PATCH,POST,DELETE",
 'access-control-allow-origin': "*",
+'access-control-allow-headers': "*",
 'Access-Control-Allow-Credentials': 'false',
 'success-code': '204'
 ```
@@ -71,7 +72,7 @@ To change that, overwrite new values into cors options
   version: 1,
   cors: {
     'access-control-allow-methods': "GET,PUT,POST,DELETE",
-    'content-type': 'application/json'
+    'access-control-allow-headers': "content-type"
   }
 })
 class Test {}

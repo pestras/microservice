@@ -70,13 +70,14 @@ export interface ServiceConfig {
  */
 let serviceConfig: ServiceConfig & { name: string };
 const DEFAULT_CORS: IncomingHttpHeaders & { 'success-code'?: string } = {
-  'access-control-allow-methods': "GET,HEAD,PUT,PATCH,POST,DELETE",
+  'access-control-allow-methods': "GET,HEAD,OPTIONS,PUT,PATCH,POST,DELETE",
   'access-control-allow-origin': "*",
+  'access-control-allow-headers': "*",
   'Access-Control-Allow-Credentials': 'false',
   'success-code': '204'
 }
 
-export type HttpMehod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type HttpMehod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface IRedisOptions {
   host: string;
@@ -148,6 +149,7 @@ interface RouteFullConfig extends RouteConfig {
  */
 export interface Routes {
   GET?: { [key: string]: RouteFullConfig };
+  HEAD?: { [key: string]: RouteFullConfig };
   POST?: { [key: string]: RouteFullConfig };
   PUT?: { [key: string]: RouteFullConfig };
   PATCH?: { [key: string]: RouteFullConfig };
@@ -372,7 +374,7 @@ export class Request<T = any> {
     this.method = <HttpMehod>this.http.method.toUpperCase();
   }
 
-  header(key: string) { return this.http.headers[key]; }
+  header(key: string) { return this.http.headers[key.toLowerCase()]; }
 
   get headers() { return this.http.headers; }
 }
