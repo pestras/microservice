@@ -418,6 +418,7 @@ export class Response {
     this.http.setHeader('X-Frame-Options', 'DENY');
     this.http.setHeader('Content-Security-Policy', "script-src 'self'");
     this.http.setHeader('X-Content-Type-Options', 'nosniff');
+    this.setHeaders(serviceConfig.cors);
   }
 
   get ended() { return this._ended; }
@@ -482,25 +483,14 @@ function createServer() {
         clearTimeout(hookTimer);
       });
 
-
       logger.info(`${request.method} ${request.url.pathname}`);
-      logger.debug('request headers:');
-      logger.debug(request.headers);
-
-      if (['POST', "PUT", 'PATCH', 'DELETE'].indexOf(request.method) > -1) {
-        logger.debug('request body:')
-        logger.debug(request.body);
-      }
 
       response.http.on("error", err => {
         logger.error(err, { method: request.method });
         if (typeof service.onError === "function") service.onError(request, response, err);
       });
 
-      if (<any>request.method === 'OPTIONS') {
-        response.setHeaders(serviceConfig.cors);
-        return response.status(+serviceConfig.cors['success-code']).end();
-      }
+      if (<any>request.method === 'OPTIONS') return response.status(+serviceConfig.cors['success-code']).end();
 
       if (typeof service.onRequest === "function") {
         let ret = service.onRequest(request, response);
@@ -651,11 +641,6 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
         logger.info(`subject called: ${subject}`);
 
         if (err) return logger.error(err, { subject: subject, method: subject });
-
-        logger.debug('msg:');
-        logger.debug(msg);
-        logger.debug('msg data:');
-        logger.debug(msg.data);
 
         if (subjectConf.dataQuota && subjectConf.dataQuota < msg.size) {
           if (msg.reply) Micro.nats.publish(msg.reply, 'msg body quota exceeded');
