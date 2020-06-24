@@ -33,6 +33,7 @@ logLevel    | LOGLEVEL | LOGLEVEL.INFO   |
 tranferLog  | boolean  | false           | Allow logger to transfer logs to the service **onLog** method
 nats        | string \| number \| NatsConnectionOptions | null        | see [Nats Docs](https://docs.nats.io/)
 exitOnUnhandledException | boolean | true |
+exitOnUnhandledRejection | boolean | true |
 socket | SocketIOOptions | null |
 cors | IncomingHttpHeaders & { 'success-code'?: string } | [see cors](#cors) | CORS for preflights requests
 
@@ -160,7 +161,7 @@ class Articles {
   getArticle(req: Request, res: Response) {
     let id = req.params.id;
 
-    // get artcle code
+    // get article code
 
     res.json(article);
   }
@@ -174,7 +175,7 @@ class Articles {
 Name | Type | Description
 --- | --- | ---
 url | URL | URL extends Node URL class with some few properties, most used one is *query*.
-params | { [key: string]: string | string[] } | includes route path params values.
+params | { [key: string]: string \| string[] } | includes route path params values.
 body | any |
 auth | any | useful to save some auth value passed from 'auth' hook for instance.
 headers | IncomingHttpHeaders | return all current request headers.
@@ -241,7 +242,7 @@ json | (data?: any) => void | Used to send json data.
 status | (code: number) => Response | Used to set response status code.
 type | (contentType: string) => void | assign content-type response header value.
 end | any | Overwrites orignal end method *recommended to use*
-setHeader | (headers: { [key: string]: string \| string[] \| number }) => void | set multiple headers at once
+setHeaders | (headers: { [key: string]: string \| string[] \| number }) => void | set multiple headers at once
 http | NodeJS.ServerResponse | 
 
 Using response.json() will set 'content-type' response header to 'application/json'.
@@ -274,7 +275,7 @@ Hooks accepts an optional timeout argument defaults to 10s, and the hook handler
 import { Micro, SERVICE, Request, Response, HOOK, ROUTE, CODES } from '@pestras/microservice';
 
 @SERVICE()
-class TEST {
+class Test {
   @HOOK(10000)
   async auth(req: Request, res: Response, handlerName: string) {
     const user: User;
@@ -308,7 +309,7 @@ Hooks should handle the response on failure and returning or resolving to false,
 Used to subscribe to nats server pulished subjects, and also accepts a subject string as a first argument and an optional config object.
 
 Name | Type | Default | Description
---- | --- | --- | --- | ---
+--- | --- | --- | ---
 hooks | string[] | [] | hooks methods that should be called before the route handler
 dataQuota | number | 1024 * 100 | Subject msg data size limit
 payload | Nats.Payload | Payload.JSON | see [Nats Docs](https://docs.nats.io/)
@@ -329,9 +330,11 @@ class Email {
   // arguments are swaped with (nats: Nats.Client, msg: NatsMsg, handlerName: string - name of the subject handler method that called the hook)
   @Hook(5000)
   async auth(nats: Client, msg: NatsMsg, handlerName: string) {
-    // if hook failed its purpose should return false and check for msg reply if exists
-    if (msg.reply) nats.publish(msg.replay, { error: 'some error' })
-    return false
+    // if hook failed its purpose should check for msg reply if exists and return false
+    if (msg.reply) {
+      nats.publish(msg.replay, { error: 'some error' })
+      return false
+    }
 
     // otherwise
     return true;
@@ -511,7 +514,7 @@ class Publisher {
 
 **PMS** uses node built in cluster api, and made it easy for us to manage workers communications.
 
-First of all to enable custering we should set workers number in our service configurations to some value greater than one.
+First of all to enable clustering we should set workers number in our service configurations to some value greater than one.
 
 ```ts
 import { SERVICE } from '@pestras/microservice';
@@ -834,7 +837,7 @@ class Publisher implements ServiceEvents {
 
 ## onUnhandledRejection
 
-Defining this handler will cancel **exitOnonUnhandledRejection** option in service config, so you need to exit manually if it needs to be.
+Defining this handler will cancel **exitOnUnhandledRejection** option in service config, so you need to exit manually if it needs to be.
 
 ```ts
 @SERVICE({ workers: 4 })

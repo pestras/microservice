@@ -663,7 +663,7 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
               hookTimer = setTimeout(() => {
                 logger.warn('hook timeout: ' + hook);
-                if (msg.reply) Micro.nats.publish(msg.reply, 'auth timeout');
+                if (msg.reply) Micro.nats.publish(msg.reply, 'hook timeout');
                 ended = true;
               }, hookTimeout);
 
@@ -690,6 +690,7 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
 
           } catch (e) {
+            ended = true;
             clearTimeout(hookTimer);
             if (msg.reply) Micro.nats.publish(msg.reply, { error: { msg: 'hook unhandled error' + currHook } });
             return logger.error(e);
@@ -699,10 +700,9 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
         if (ended) return;
 
         try {
-          (async () => {
-            await service[subjectConf.key](nats, msg);
-            logger.info(`subject ${msg.subject} ended`);
-          })();          
+          let ret = service[subjectConf.key](nats, msg);
+          if (ret && typeof ret.then === "function") await ret;
+          logger.info(`subject ${msg.subject} ended`);     
         } catch (e) { logger.error(e, { subject: { name: subject, msg }, method: subject }); }
 
       }, subjectConf.options);
