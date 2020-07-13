@@ -269,14 +269,12 @@ Headers can be overwritten using **response.setHeaders** method,
 
 Hooks are called before the actual request handler, they are helpful for code separation like auth, input validation or whatever logic needed, they could be sync or async returning boolean value.
 
-Hooks accepts an optional timeout argument defaults to 10s, and the hook handler will get three inputs (request, response, handlerName: name of the method that called the hook).
-
 ```ts
 import { Micro, SERVICE, Request, Response, HOOK, ROUTE, CODES } from '@pestras/microservice';
 
 @SERVICE()
 class Test {
-  @HOOK(10000)
+  @HOOK()
   async auth(req: Request, res: Response, handlerName: string) {
     const user: User;
   

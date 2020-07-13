@@ -178,12 +178,12 @@ export function ROUTE(config: RouteConfig = {}) {
 }
 
 /** Hooks Repo */
-const hooksRepo: { [key: string]: number } = {};
+const hooksRepo: string[] = [];
 
 /** Hook Decorator */
-export function HOOK(timeout = 10000) {
+export function HOOK() {
   return (target: any, key: string) => {
-    hooksRepo[key] = Math.abs(timeout || 10000);
+    hooksRepo.push(key);
   }
 }
 
@@ -476,11 +476,9 @@ function createServer() {
       let request = await createRequest(httpRequest);
       let response = new Response(request, httpResponse);
       let timer: NodeJS.Timeout = null;
-      let hookTimer: NodeJS.Timeout = null;
 
       request.http.on('close', () => {
         clearTimeout(timer);
-        clearTimeout(hookTimer);
       });
 
       logger.info(`${request.method} ${request.url.pathname}`);
@@ -563,15 +561,9 @@ function createServer() {
               if (response.ended) return;
 
               currHook = hook;
-              let hookTimeout = hooksRepo[hook];
 
               if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
               else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
-
-              hookTimer = setTimeout(() => {
-                logger.warn('hook timeout:' + hook);
-                response.status(CODES.REQUEST_TIMEOUT).end('request time out');
-              }, hookTimeout);
 
               let ret = service[hook](request, response, route.key);
               if (ret) {
@@ -579,14 +571,11 @@ function createServer() {
                   let passed = await ret;
                   if (!passed) {
                     if (!response.ended) {
-                      logger.warn('unhandled hook response: ' + hook);
+                      logger.warn('unhandled async hook response: ' + hook);
                       response.status(CODES.BAD_REQUEST).json({ msg: 'badRequest' });
                     }
                     return;
                   }
-                  clearTimeout(hookTimer);
-                } else {
-                  clearTimeout(hookTimer);
                 }
 
               } else {
@@ -602,9 +591,6 @@ function createServer() {
             response.status(CODES.UNKNOWN_ERROR).json({ msg: 'unknownError' });
           }
         }
-
-        // check if response already sent, that happens when hook timeout
-        if (response.ended) return;
 
         try { service[route.key](request, response); }
         catch (e) { logger.error(e, { route: route.key }); }
@@ -637,7 +623,6 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
     if (typeof service[subjectConf.key] === "function") {
       logger.info('subscribing to subject: ' + subject);
       let sub = await nats.subscribe(subject, async (err, msg) => {
-        let ended = false;
         logger.info(`subject called: ${subject}`);
 
         if (err) return logger.error(err, { subject: subject, method: subject });
@@ -649,55 +634,30 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
         if (subjectConf.hooks && subjectConf.hooks.length > 0) {
           let currHook: string;
-          let hookTimer: any;
-
-          if (ended) return;
 
           try {
             for (let hook of subjectConf.hooks) {
-              let hookTimeout = hooksRepo[hook];
               currHook = hook;
 
               if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
               else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
-              hookTimer = setTimeout(() => {
-                logger.warn('hook timeout: ' + hook);
-                if (msg.reply) Micro.nats.publish(msg.reply, 'hook timeout');
-                ended = true;
-              }, hookTimeout);
-
               let ret = service[hook](nats, msg, subject);
               if (ret) {
                 if (typeof ret.then === "function") {
                   let passed = await ret;
-                  clearTimeout(hookTimer);
 
-                  if (!passed) {
-                    ended = true;
-                    return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
-                  }
+                  if (!passed) return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
                 }
 
-              } else {
-                ended = true;
-                clearTimeout(hookTimer);
-                return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
-              }
-
-              clearTimeout(hookTimer);
+              } else return logger.info(`subject ${msg.subject} ended from hook: ${hook}`);
             }
 
-
           } catch (e) {
-            ended = true;
-            clearTimeout(hookTimer);
             if (msg.reply) Micro.nats.publish(msg.reply, { error: { msg: 'hook unhandled error' + currHook } });
             return logger.error(e);
           }
         }
-
-        if (ended) return;
 
         try {
           let ret = service[subjectConf.key](nats, msg);
