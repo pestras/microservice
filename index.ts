@@ -544,24 +544,24 @@ function createServer() {
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
-        if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
-          return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
-
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.http.headers['content-length'] > 0) {
-          if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
-            return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
-
-          if (route.processBody)
-            try { request.body = await processBody(request.http); }
-            catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
-
-          if (!!request.body) {
-            if (route.accepts.indexOf('application/json') > -1)
-              try { request.body = JSON.parse(request.body); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
-            else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
-              request.body = URL.QueryToObject(request.body);
+          if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.http.headers['content-length'] > 0) {
+            // validate reeuest body size
+            if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
+              return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
+      
+            if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
+              return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+      
+            if (route.processBody) {
+              try { request.body = await processBody(request.http); }
+              catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
+      
+              if (route.accepts.indexOf('application/json') > -1)
+                try { request.body = JSON.parse(request.body); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
+              else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
+                request.body = URL.QueryToObject(request.body);
+            }
           }
-        }
 
         if (route.hooks && route.hooks.length > 0) {
           let currHook: string;
