@@ -143,6 +143,7 @@ method | HttpMethod | 'GET' |
 accepts | string | 'application/json' | shortcut for 'Content-Type' header
 hooks | string[] | [] | hooks methods that should be called before the route handler
 bodyQuota | number | 1024 * 100 | Request body size limit
+processBody | boolean | true | read request data stream
 queryLength | number | 100 | Request query characters length limit
 timeout | number | 15000 | Max time to handle the request before canceling
 
