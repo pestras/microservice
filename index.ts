@@ -553,13 +553,15 @@ function createServer() {
               return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
       
             if (route.processBody) {
-              try { request.body = await processBody(request.http); }
+              let data: any;
+              try { data = await processBody(request.http); }
               catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
       
               if (route.accepts.indexOf('application/json') > -1)
-                try { request.body = JSON.parse(request.body); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
+                try { request.body = JSON.parse(data); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
               else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
-                request.body = URL.QueryToObject(request.body);
+                request.body = URL.QueryToObject(data);
+              else request.body = data;
             }
           }
 
