@@ -29,6 +29,7 @@ interface Service {
 // let nats: Client;
 let server: http.Server;
 let service: Service;
+let subServicesList: any[] = [];
 
 /**
  * logger instance
@@ -36,10 +37,13 @@ let service: Service;
 let logger = new Logger();
 
 interface ProcessMsgsListeners {
-  [key: string]: string;
+  [key: string]: {
+    service: any;
+    key: string;
+  };
 }
 
-const processMsgsListners: ProcessMsgsListeners = {};
+const processMsgsListners: ProcessMsgsListeners = { };
 
 export interface SocketIOOptions {
   serverOptions?: SocketIO.ServerOptions;
@@ -104,6 +108,7 @@ export function SERVICE(config: ServiceConfig = {}) {
     let name = config.kebabCase === false ? constructor.name.toLowerCase() : toKebabCasing(constructor.name).toLowerCase();
     serviceConfig = {
       name,
+      kebabCase: config.kebabCase === false ? false : true,
       version: config.version || 0,
       workers: config.workers || 0,
       logLevel: config.logLevel || LOGLEVEL.INFO,
@@ -121,7 +126,7 @@ export function SERVICE(config: ServiceConfig = {}) {
 
 export function MSG(processMsg: string) {
   return function (target: any, key: string) {
-    processMsgsListners[processMsg] = key;
+    processMsgsListners[processMsg] = { key, service: target.constructor };
   }
 }
 
@@ -143,6 +148,7 @@ export interface RouteConfig {
 
 interface RouteFullConfig extends RouteConfig {
   key?: string;
+  service?: any;
 };
 
 /**
@@ -161,7 +167,7 @@ export interface Routes {
  * Routes repo object that will hold all defined routes
  */
 let serviceRoutes: Routes = {};
-let serviceRoutesRepo: (RouteConfig & { key: string })[] = [
+let serviceRoutesRepo: RouteFullConfig[] = [
   { path: '/healthcheck', key: 'healthcheck', method: 'GET' },
   { path: '/readiness', key: 'readiness', method: 'GET' },
   { path: '/liveness', key: 'liveness', method: 'GET' }
@@ -174,7 +180,7 @@ let serviceRoutesRepo: (RouteConfig & { key: string })[] = [
  */
 export function ROUTE(config: RouteConfig = {}) {
   return (target: any, key: string) => {
-    serviceRoutesRepo.push({ key, ...config });
+    serviceRoutesRepo.push({ key, service: target.constructor, ...config });
   }
 }
 
@@ -198,10 +204,15 @@ export interface SubjectConfig {
   options?: Nats.SubscriptionOptions;
 }
 
+export interface SubjectFullConfig extends SubjectConfig {
+  key?: string;
+  service?: any;
+}
+
 /**
  * Nats subjects repo that will hold all defined subjects
  */
-let serviceSubjects: { [key: string]: SubjectConfig & { key: string; } } = {};
+let serviceSubjects: { [key: string]: SubjectFullConfig } = {};
 
 /**
  * Nats subject decorator
@@ -211,6 +222,7 @@ let serviceSubjects: { [key: string]: SubjectConfig & { key: string; } } = {};
 export function SUBJECT(subject: string, config: SubjectConfig = {}) {
   return (target: any, key: string) => {
     serviceSubjects[subject] = {
+      service: target.constructor,
       options: config.options || {},
       hooks: config.hooks || [],
       dataQuota: config.dataQuota || 1024 * 100,
@@ -224,6 +236,7 @@ export function SUBJECT(subject: string, config: SubjectConfig = {}) {
  * Socket IO namespace config interface
  */
 export interface IONamespace {
+  service: any;
   connect?: string;
   reconnect?: string;
   handshake?: string;
@@ -246,7 +259,7 @@ let serviceNamespaces: { [key: string]: IONamespace } = {};
 export function CONNECT(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].connect = key;
     }
   }
@@ -260,7 +273,7 @@ export function CONNECT(namespaces: string[] = ['default']) {
 export function RECONNECT(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].reconnect = key;
     }
   }
@@ -274,7 +287,7 @@ export function RECONNECT(namespaces: string[] = ['default']) {
 export function HANDSHAKE(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].handshake = key;
     }
   }
@@ -288,7 +301,7 @@ export function HANDSHAKE(namespaces: string[] = ['default']) {
 export function USE(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].use = key;
     }
   }
@@ -302,7 +315,7 @@ export function USE(namespaces: string[] = ['default']) {
 export function USESOCKET(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].useSocket = key;
     }
   }
@@ -316,7 +329,7 @@ export function USESOCKET(namespaces: string[] = ['default']) {
 export function EVENT(name?: string, namespaces: string[] = ["default"]) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].events = serviceNamespaces[namespace].events || {};
       serviceNamespaces[namespace].events[name] = key;
     }
@@ -331,7 +344,7 @@ export function EVENT(name?: string, namespaces: string[] = ["default"]) {
 export function DISCONNECT(namespaces: string[] = ['default']) {
   return (target: any, key: string) => {
     for (let namespace of namespaces) {
-      serviceNamespaces[namespace] = serviceNamespaces[namespace] || {};
+      serviceNamespaces[namespace] = serviceNamespaces[namespace] || { service: target.constructor };
       serviceNamespaces[namespace].disconnect = key;
     }
   }
@@ -446,7 +459,7 @@ export class Response {
     this.http.end(...arguments);
   }
 
-  cookies(pairs: {[key: string]: string}) {
+  cookies(pairs: { [key: string]: string }) {
     if (!pairs) return this;
     let all: string[] = [];
     for (let [key, value] of Object.entries(pairs)) all.push(`${key}=${value}`);
@@ -544,8 +557,15 @@ function createServer() {
           else return response.status(200).end();
         }
 
-        if (typeof service[route.key] !== "function") {
-          if (typeof service.on404 === "function") return service.on404(request, response);
+        let currentService = route.service;
+
+        if (typeof currentService.onRequest === "function") {
+          let ret = currentService.onRequest(request, response);
+          if (ret && ret.then !== undefined) await ret;
+        }
+
+        if (typeof currentService[route.key] !== "function") {
+          if (typeof currentService.on404 === "function") return currentService.on404(request, response);
           return response.status(CODES.NOT_FOUND).end();
         }
 
@@ -559,26 +579,26 @@ function createServer() {
         if (route.queryLength > 0 && queryStr && request.url.search.length > route.queryLength)
           return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request query exceeded length limit');
 
-          if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.http.headers['content-length'] > 0) {
-            // validate reeuest body size
-            if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
-              return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
-      
-            if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
-              return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
-      
-            if (route.processBody) {
-              let data: any;
-              try { data = await processBody(request.http); }
-              catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
-      
-              if (route.accepts.indexOf('application/json') > -1)
-                try { request.body = JSON.parse(data); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
-              else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
-                request.body = URL.QueryToObject(data);
-              else request.body = data;
-            }
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) > -1 && +request.http.headers['content-length'] > 0) {
+          // validate reeuest body size
+          if (route.bodyQuota > 0 && route.bodyQuota < +request.http.headers['content-length'])
+            return response.status(CODES.REQUEST_ENTITY_TOO_LARGE).end('request body exceeded size limit');
+
+          if (route.accepts.indexOf((<string>request.header('content-type')).split(';')[0]) === -1)
+            return response.status(CODES.BAD_REQUEST).json({ msg: 'invalidContentType' });
+
+          if (route.processBody) {
+            let data: any;
+            try { data = await processBody(request.http); }
+            catch (e) { return response.status(CODES.BAD_REQUEST).json({ msg: 'error processing request data', original: e }); }
+
+            if (route.accepts.indexOf('application/json') > -1)
+              try { request.body = JSON.parse(data); } catch (e) { return response.status(CODES.BAD_REQUEST).json(e); }
+            else if (route.accepts.indexOf('application/x-www-form-urlencoded') > -1)
+              request.body = URL.QueryToObject(data);
+            else request.body = data;
           }
+        }
 
         if (route.hooks && route.hooks.length > 0) {
           let currHook: string;
@@ -589,10 +609,10 @@ function createServer() {
 
               currHook = hook;
 
-              if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
-              else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
+              if (currentService[hook] === undefined && service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
+              else if (typeof currentService[hook] !== 'function' && typeof service[hook] !== "function") return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
-              let ret = service[hook](request, response, route.key);
+              let ret = currentService[hook] ? currentService[hook](request, response, route.key) : service[hook](request, response, route.key);
               if (ret) {
                 if (typeof ret.then === "function") {
                   let passed = await ret;
@@ -619,7 +639,7 @@ function createServer() {
           }
         }
 
-        try { service[route.key](request, response); }
+        try { currentService[route.key](request, response); }
         catch (e) { logger.error(e, { route: route.key }); }
       }
 
@@ -646,8 +666,9 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
 
   for (let subject in serviceSubjects) {
     let subjectConf = serviceSubjects[subject];
+    let currentService = getCurrentService(subjectConf.service) || service;
 
-    if (typeof service[subjectConf.key] === "function") {
+    if (typeof currentService[subjectConf.key] === "function") {
       logger.info('subscribing to subject: ' + subject);
       let sub = await nats.subscribe(subject, async (err, msg) => {
         logger.info(`subject called: ${subject}`);
@@ -666,10 +687,10 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
             for (let hook of subjectConf.hooks) {
               currHook = hook;
 
-              if (service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
-              else if (typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
+              if (currentService[hook] === undefined && service[hook] === undefined) return Micro.logger.warn(`Hook not found: ${hook}!`);
+              else if (typeof currentService[hook] !== 'function' && typeof service[hook] !== 'function') return Micro.logger.warn(`invalid hook type: ${hook}!`);
 
-              let ret = service[hook](nats, msg, subject);
+              let ret = currentService[hook] ? currentService[hook](nats, msg, subject) : service[hook](nats, msg, subject);
               if (ret) {
                 if (typeof ret.then === "function") {
                   let passed = await ret;
@@ -687,7 +708,7 @@ async function InitiatlizeNatsSubscriptions(nats: Nats.Client) {
         }
 
         try {
-          let ret = service[subjectConf.key](nats, msg);
+          let ret = currentService[subjectConf.key](nats, msg);
           if (ret && typeof ret.then === "function") await ret;
           logger.info(`subject ${msg.subject} ended`);
         } catch (e) { logger.error(e, { subject: { name: subject, msg }, method: subject }); }
@@ -721,23 +742,24 @@ async function initializeNamespace(io: SocketIO.Server, namespace: string, optio
   }
 
   ns.on('connection', socket => {
+    let currService = getCurrentService(options.service) || service;
     if (options.connect)
-      try { service[options.connect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'connect' } }); }
+      try { currService[options.connect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'connect' } }); }
     if (options.reconnect)
       socket.on('connect', () => {
-        try { service[options.reconnect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'reconnect' } }) }
+        try { currService[options.reconnect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'reconnect' } }) }
       });
     if (options.useSocket)
       socket.use((packet, next) => {
-        try { service[options.useSocket](ns, packet, next); } catch (e) { logger.error(e, { event: { name: 'useSocket' } }) }
+        try { currService[options.useSocket](ns, packet, next); } catch (e) { logger.error(e, { event: { name: 'useSocket' } }) }
       });
     if (options.disconnect)
       socket.on('disconnect', () => {
-        try { service[options.disconnect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'disconnect' } }) }
+        try { currService[options.disconnect](ns, socket); } catch (e) { logger.error(e, { event: { name: 'disconnect' } }) }
       });
     for (let event in options.events)
       socket.on(event, (...args) => {
-        try { service[options.events[event]](ns, socket, ...args); } catch (e) { logger.error(e, { event: { name: event, data: args } }) }
+        try { currService[options.events[event]](ns, socket, ...args); } catch (e) { logger.error(e, { event: { name: event, data: args } }) }
       });
   });
 
@@ -812,7 +834,7 @@ process
     logger.error('Unhandled Rejection', { reason });
     if (service && typeof service.onUnhandledRejection === "function") service.onUnhandledRejection(reason, p);
     else {
-      if (p) p.catch(err => Micro.logger.error(err));      
+      if (p) p.catch(err => Micro.logger.error(err));
       if (serviceConfig) serviceConfig.exitOnInhandledRejection && Micro.exit(1, "SIGTERM");
     }
   })
@@ -821,6 +843,14 @@ process
     if (service && typeof service.onUnhandledException === "function") service.onUnhandledException(err);
     else if (serviceConfig) serviceConfig.exitOnUnhandledException && Micro.exit(1, "SIGTERM");
   });
+
+
+
+function getCurrentService(constructor: any) {
+  if (service?.constructor === constructor) return service;
+  for (let subService of subServicesList) if (subService.constructor === constructor) return subService;
+  return null;
+}
 
 export interface SocketIOPublishMessage {
   event: string;
@@ -844,6 +874,12 @@ export interface ServiceEvents {
   onHealthcheck?: (res: Response) => void;
   onReadycheck?: (res: Response) => void;
   onLivecheck?: (res: Response) => void;
+}
+
+export interface SubServiceEvents {
+  onInit?: () => void | Promise<void>;
+  onReady?: () => void;
+  onRequest?: (req: Request, res: Response) => void | Promise<void>;
 }
 
 export interface AttemptOptions {
@@ -873,6 +909,7 @@ export class Micro {
   static subscriptions: Map<string, Nats.Subscription>;
   static namespaces: Map<string, SocketIO.Server | SocketIO.Namespace>;
   static get status() { return status; }
+  static readonly store = {}
 
   static message(msg: string, data: any = null, target: 'all' | 'others' = 'others') {
     process.send({ message: msg, target, data });
@@ -936,7 +973,7 @@ export class Micro {
   static exit(code = 0, signal: NodeJS.Signals = "SIGTERM") {
     status = MICRO_STATUS.EXIT;
     logger.warn(`cleaning up before exit`);
-    server.close();
+    !!server && server.close();
     !!Micro.nats && Micro.nats.close();
     if (typeof service.onExit === 'function') service.onExit(code, signal);
     logger.warn(`service exited with signal: ${signal}, code: ${code}`);
@@ -954,25 +991,35 @@ export class Micro {
    * run http server listener
    * @param ServiceClass 
    */
-  static async start(ServiceClass: any, ...args: any[]) {
+  static async start(ServiceClass: any, subServices?: any[]) {
     if (cluster.isMaster && !!serviceConfig.workers) {
       new WorkersManager(logger, serviceConfig.workers);
       return;
     }
 
-    service = new ServiceClass(...args);
+    service = new ServiceClass();
     logger.level = serviceConfig.logLevel;
+
+    if (subServices?.length > 0)
+      for (let subService of subServices) subServicesList.push(new subService());
 
     if (typeof service.log === 'function' && serviceConfig.transferLog)
       logger.transferTo(service);
 
     if (typeof service.onInit === "function") {
       let promise: Promise<any> = service.onInit();
-      if (promise && typeof promise.then === "function") {
-        try {
-          await promise;
-        } catch (error) {
-          logger.error(error);
+      if (typeof promise?.then === "function")
+        try { await promise; }
+        catch (error) { logger.error(error); }
+    }
+
+    if (subServices?.length > 0) {
+      for (let subService of subServices) {
+        if (typeof subService.onInit === "function") {
+          let promise: Promise<any> = subService.onInit();
+          if (typeof promise?.then === "function")
+            try { await promise; }
+            catch (error) { logger.error(error); }
         }
       }
     }
@@ -980,14 +1027,20 @@ export class Micro {
     if (Object.keys(processMsgsListners).length > 0)
       process.on('message', (msg: WorkerMessage) => {
         if (msg.message === 'publish') return;
-        let key = processMsgsListners[msg.message];
-        if (key && typeof service[key] === "function") service[key](msg.data);
+        let options = processMsgsListners[msg.message];
+        let currService = getCurrentService(options.service) || service;
+        if (options.key && typeof currService[options.key] === "function") currService[options.key](msg.data);
       });
 
     for (let config of serviceRoutesRepo) {
+      let currService = getCurrentService(config.service) || service;
+      let pathPrefix = '';
+      if (currService !== service)
+        pathPrefix = '/' + (serviceConfig.kebabCase ? toKebabCasing(currService.constructor.name) : currService.constructor.name as string).toLowerCase();
 
       let route: RouteFullConfig = {
-        path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + (config.path || '')),
+        service: currService,
+        path: URL.Clean("/" + serviceConfig.name + '/v' + serviceConfig.version + pathPrefix + (config.path || '')),
         name: config.name || config.key,
         method: config.method || 'GET',
         accepts: config.accepts || 'application/json; charset=utf-8',
@@ -1000,8 +1053,8 @@ export class Micro {
       };
 
       for (let hook of route.hooks)
-        if (service[hook] === undefined) Micro.logger.warn(`Hook not found: ${hook}!`);
-        else if (typeof service[hook] !== 'function') Micro.logger.warn(`invalid hook type: ${hook}!`);
+        if (currService[hook] === undefined && service[hook] === undefined) Micro.logger.warn(`Hook not found: ${hook}!`);
+        else if (typeof currService[hook] !== 'function' && typeof service[hook] !== 'function') Micro.logger.warn(`invalid hook type: ${hook}!`);
 
       serviceRoutes[route.method] = serviceRoutes[route.method] || {};
       serviceRoutes[route.method][route.path] = route;
@@ -1012,7 +1065,6 @@ export class Micro {
 
     if (!!serviceConfig.nats) {
       try {
-
         logger.info('initializing nats server connection');
         Micro.nats = await Nats.connect(serviceConfig.nats);
         logger.info('connected to nats server successfully');
@@ -1027,6 +1079,11 @@ export class Micro {
 
     status = MICRO_STATUS.LIVE;
     if (typeof service.onReady === 'function') service.onReady();
+
+    if (subServices?.length > 0)
+      for (let subService of subServices)
+        if (typeof subService.onReady === "function") subService.onReady();
+
 
     process.on('SIGTERM', (signal) => Micro.exit(0, signal));
     process.on('SIGHUP', (signal) => Micro.exit(0, signal));

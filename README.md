@@ -96,23 +96,7 @@ export class TEST {}
 Micro.start(Test);
 ```
 
-**Micro.start** method accepts additionl optional arguments that will be passed to service constructor in order
-
-```ts
-import { SERVICE, Micro } from '@pestras/microservice';
-import { config } from './config'; 
-
-@SERVICE({
-  // service config
-})
-export class TEST {
-  constructor(config: MyConf) {
-    // handle configurations
-  }
-}
-
-Micro.start(Test, config);
-```
+**Micro.start** method accepts an additionl optional array of sub services, which will be explained later on;
 
 **Micro** object has another properties and methods that indeed we are going to use as well later in the service.
 
@@ -120,6 +104,7 @@ Name | Type | Description
 --- | --- | ---
 status | MICRO_STATUS | INIT \| EXIT\| LIVE
 logger | Logger |
+store | { [key: string]: any } | data store shared among main service and the all subservices.
 nats | NatsClient | see [Nats Docs](https://docs.nats.io/)
 subscriptions | Map<string, NatsSubscription> | Holds all subsciptions defined in our service
 namespaces | Map<string, SocketIO.Namespace> | Holds all namesspaces defind in our service
@@ -510,6 +495,87 @@ class Publisher {
   blogSocketDisconnected(ns: SocketIO.Namespace, socket: SocketIO.Socket) {}
 }
 ```
+
+# Sub Services
+
+*PM* gives us the ability to modulerize our service into subservices for better code splitting.
+
+SubServices are classes that are defined in seperate modules, then imported to the main service module then passed to *Micro.start()* method to be implemented.
+
+```ts
+// comments.service.ts
+import { ROUTE, SUBJECT, HOOK, SubServiceEvents } from '@pestras/microservice';
+
+export class Comments implements SubServiceEvents {
+
+  async onInit() {}
+  
+  @HOOK()
+  validate(req, res) { return true }
+  
+  @ROUTE({ 
+    path: '/list' // => /artivles/v0/comments/list
+    // auth hook from the main service
+    // validate from local service
+    hooks: ['auth', 'validate']
+  })
+  list(req, res) {
+    res.json([]);
+  }
+
+  @SUBJECT('comment-like')
+  like(nats, msg) {
+    let sharedValue = Micro.store.someSharedValue;
+    // save like
+  }
+}
+```
+
+```ts
+// main.ts
+import { Micro, SERVICE, HOOk, ROUTE, ServiceEvents } from '@pestras/microservice';
+import { Comments} from './comments.service'
+
+@SERVICE()
+class Articles {
+
+  onInit() {    
+    Micro.store.someSharedValue = "shared value";
+  }
+
+  @HOOK()
+  async auth(req, res) {
+    return true;
+  }
+
+  @HOOK()
+  validate(req, res) {
+    return true;
+  }
+
+  @ROUTE({
+    path: '/list', // => articels/v0/list
+    // both hooks from the main service
+    hooks: ['auth', 'validate']
+  })
+  list(req, res) {
+    res.json([]);
+  }
+}
+
+// pass sub services as an array to the second argument of Micro.start method
+Micro.start(Articles, [Comments]);
+```
+
+Serveral notes can be observed from the example:
+
+* Routes paths in sub services are prefixed with the sub service name.
+* Local hooks has the priority over main service hooks.
+* Subservices have their own events *onInit, onReady and onRequest*.
+* Subjects, SocketIO, process MSG decorators are all supported as well.
+* Micro.store is shared among all subServices.
+
+SocketIO namespaces cannot be splitted into several subservices, each subservce must have its own namespace.
 
 # Cluster
 
