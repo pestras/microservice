@@ -909,7 +909,7 @@ export class Micro {
   static subscriptions: Map<string, Nats.Subscription>;
   static namespaces: Map<string, SocketIO.Server | SocketIO.Namespace>;
   static get status() { return status; }
-  static readonly store = {}
+  static readonly store: { [key: string]: any } = {}
 
   static message(msg: string, data: any = null, target: 'all' | 'others' = 'others') {
     process.send({ message: msg, target, data });
@@ -1040,7 +1040,7 @@ export class Micro {
 
       let route: RouteFullConfig = {
         service: currService,
-        path: URL.Clean("/" + serviceConfig.name + '/v' + serviceConfig.version + pathPrefix + (config.path || '')),
+        path: URL.Clean(serviceConfig.name + '/v' + serviceConfig.version + pathPrefix + (config.path ? '/' + URL.Clean(config.path) : '')),
         name: config.name || config.key,
         method: config.method || 'GET',
         accepts: config.accepts || 'application/json; charset=utf-8',
