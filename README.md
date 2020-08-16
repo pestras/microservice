@@ -182,6 +182,7 @@ auth | any | useful to save some auth value passed from 'auth' hook for instance
 headers | IncomingHttpHeaders | return all current request headers.
 header | (key: string) => string | method to get specific request header value
 locals | Object | to set any additional data passed between hooks and route handler
+cookies | {[key: string]: string} | holds all incoming message cookies key value pairs
 http | NodeJS.IncomingMessage | 
 
 ### Request Path Patterns
@@ -241,9 +242,10 @@ Name | Type | Description
 --- | --- | ---
 json | (data?: any) => void | Used to send json data.
 status | (code: number) => Response | Used to set response status code.
-type | (contentType: string) => void | assign content-type response header value.
+type | (contentType: string) => Response | assign content-type response header value.
 end | any | Overwrites orignal end method *recommended to use*
-setHeaders | (headers: { [key: string]: string \| string[] \| number }) => void | set multiple headers at once
+setHeaders | (headers: { [key: string]: string \| string[] \| number }) => Response | set multiple headers at once
+cookies | (pairs: {[key: string]: string}) => Response | set response cookies
 http | NodeJS.ServerResponse | 
 
 Using response.json() will set 'content-type' response header to 'application/json'.
