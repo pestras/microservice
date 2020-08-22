@@ -834,7 +834,7 @@ process
     logger.error('Unhandled Rejection', { reason });
     if (service && typeof service.onUnhandledRejection === "function") service.onUnhandledRejection(reason, p);
     else {
-      if (p) p.catch(err => Micro.logger.error(err));
+      if (p) p.catch(err => Micro.logger.error('Unhandled Rejection', err));
       if (serviceConfig) serviceConfig.exitOnInhandledRejection && Micro.exit(1, "SIGTERM");
     }
   })
@@ -1013,8 +1013,8 @@ export class Micro {
         catch (error) { logger.error(error); }
     }
 
-    if (subServices?.length > 0) {
-      for (let subService of subServices) {
+    if (subServicesList?.length > 0) {
+      for (let subService of subServicesList) {
         if (typeof subService.onInit === "function") {
           let promise: Promise<any> = subService.onInit();
           if (typeof promise?.then === "function")
