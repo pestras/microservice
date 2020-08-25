@@ -831,7 +831,7 @@ async function createSocketIO() {
  */
 process
   .on('unhandledRejection', (reason, p) => {
-    logger.error('Unhandled Rejection', { reason });
+    logger.error('Unhandled Rejection', reason);
     if (service && typeof service.onUnhandledRejection === "function") service.onUnhandledRejection(reason, p);
     else {
       if (p) p.catch(err => Micro.logger.error('Unhandled Rejection', err));
@@ -839,7 +839,7 @@ process
     }
   })
   .on('uncaughtException', err => {
-    logger.error('uncaughtException', { err });
+    logger.error('uncaughtException', err);
     if (service && typeof service.onUnhandledException === "function") service.onUnhandledException(err);
     else if (serviceConfig) serviceConfig.exitOnUnhandledException && Micro.exit(1, "SIGTERM");
   });
