@@ -64,7 +64,7 @@ export class Logger {
     let color = (<any>COLOR)[LOGLEVEL[mode]];
     console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, msg, new Date().toTimeString());
     !!meta && console[<'log'>LOGLEVEL[mode].toLowerCase()](`${color}%s${COLOR.RESET} %s${COLOR.DATE} %s${COLOR.RESET}`, `[${LOGLEVEL[mode]}: ${process.pid}]`, this.stringify(meta), new Date().toTimeString());
-    if (mode === LOGLEVEL.ERROR && msg.stack) console.error(`${COLOR.ERROR}%s${COLOR.RESET}`, `[ERROR: ${process.pid}]`, this.stringify(msg.stack));
+    if (mode === LOGLEVEL.ERROR && msg.stack) console.log(msg.stack);
   }
 
   debug(msg: any, meta?: any) {

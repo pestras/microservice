@@ -32,7 +32,7 @@
     "typescript": "^3.7.5"
   },
   "dependencies": {
-    "@pestras/toolbox": "^1.1.8",
+    "@pestras/toolbox": "^1.1.9",
     "@types/node": "^10.17.14",
     "@types/socket.io": "^2.1.4",
     "socket.io": "^2.3.0",
